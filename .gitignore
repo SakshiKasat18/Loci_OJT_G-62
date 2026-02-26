@@ -1,0 +1,12 @@
+
+# local env
+backend/.env
+
+# deps
+backend/node_modules/
+
+# local env
+backend/.env
+
+# deps
+backend/node_modules/

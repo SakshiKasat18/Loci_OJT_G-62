@@ -1,0 +1,12 @@
+{
+  "packId": "a3_polaris",
+  "name": "Structured Indoor Pack (A3 Polaris)",
+  "version": "0.0.1",
+  "assets": {
+    "graph": "graph.json",
+    "pois": "pois.json",
+    "audioIndex": "audio_index.json",
+    "knowledge": "knowledge.json",
+    "wifiFingerprints": "wifi_fingerprints.json"
+  }
+}
