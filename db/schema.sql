@@ -19,3 +19,10 @@ CREATE TABLE IF NOT EXISTS ai_logs (
   response_json JSONB NOT NULL,
   created_at   TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS users (
+  id            SERIAL PRIMARY KEY,
+  email         TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+);
