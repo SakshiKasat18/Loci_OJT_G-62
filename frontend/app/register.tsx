@@ -9,15 +9,14 @@ import {
 import { useState } from "react";
 import { router } from "expo-router";
 import { API_BASE_URL } from "../constants/api";
-import { saveToken } from "../constants/auth";
 
-export default function Login() {
+export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleLogin() {
+  async function handleRegister() {
     setError(null);
 
     if (!email.trim() || !password.trim()) {
@@ -27,7 +26,7 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      const res = await fetch(`${API_BASE_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), password }),
@@ -35,14 +34,13 @@ export default function Login() {
 
       const data = await res.json();
 
-      if (res.status === 200 && data.token) {
-        await saveToken(data.token);
-        router.replace("/packs");
+      if (res.status === 201) {
+        router.replace("/login");
         return;
       }
 
-      if (res.status === 401) {
-        setError("Invalid email or password.");
+      if (res.status === 409) {
+        setError("An account with this email already exists.");
         return;
       }
 
@@ -61,8 +59,8 @@ export default function Login() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Loci</Text>
-      <Text style={styles.subtitle}>Sign in to continue</Text>
+      <Text style={styles.title}>Create account</Text>
+      <Text style={styles.subtitle}>Join Loci</Text>
 
       {error && <Text style={styles.error}>{error}</Text>}
 
@@ -85,21 +83,18 @@ export default function Login() {
 
       <Pressable
         style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleLogin}
+        onPress={handleRegister}
         disabled={loading}
       >
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.buttonText}>Login</Text>
+          <Text style={styles.buttonText}>Register</Text>
         )}
       </Pressable>
 
-      <Pressable
-        onPress={() => router.push("/register")}
-        style={styles.link}
-      >
-        <Text style={styles.linkText}>Don't have an account? Register</Text>
+      <Pressable onPress={() => router.replace("/login")} style={styles.link}>
+        <Text style={styles.linkText}>Already have an account? Sign in</Text>
       </Pressable>
     </View>
   );
