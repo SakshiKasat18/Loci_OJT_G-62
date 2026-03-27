@@ -7,11 +7,7 @@ export default function Index() {
   useEffect(() => {
     async function checkAuth() {
       const token = await getToken();
-      if (token) {
-        router.replace("/packs");
-      } else {
-        router.replace("/login");
-      }
+      router.replace("/test");
     }
     checkAuth();
   }, []);
