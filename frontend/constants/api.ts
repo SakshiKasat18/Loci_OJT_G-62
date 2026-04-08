@@ -1,18 +1,23 @@
 import Constants from "expo-constants";
 
-// Dynamically derive the backend host from Metro's known host IP.
-// Supports both old (manifest.debuggerHost) and new (expoConfig.hostUri) Expo SDK formats.
 function getApiBaseUrl(): string {
+  // 1. Highest priority: env variable (set when using ngrok or any fixed URL)
+  //    Usage: EXPO_PUBLIC_API_URL=https://xxx.ngrok-free.app npx expo start
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+
+  // 2. Auto-derive from Metro host (works when phone and laptop are on same LAN)
   const hostUri =
-    Constants.expoConfig?.hostUri ??        // SDK 49+
-    (Constants.manifest as any)?.debuggerHost ?? // SDK <49
+    Constants.expoConfig?.hostUri ??
+    (Constants.manifest as any)?.debuggerHost ??
     "";
-
   const host = hostUri.split(":")[0];
-  const url = host ? `http://${host}:8080` : "http://localhost:8080";
+  if (host) return `http://${host}:8080`;
 
-  console.log("[LOCI] API_BASE_URL →", url, " | raw hostUri:", hostUri);
-  return url;
+  // 3. Last fallback
+  return "http://localhost:8080";
 }
 
 export const API_BASE_URL = getApiBaseUrl();
+console.log("[LOCI] API_BASE_URL →", API_BASE_URL);
