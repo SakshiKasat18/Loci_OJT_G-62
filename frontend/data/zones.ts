@@ -1,5 +1,5 @@
 export const ZONES ={
-  Entrance: {
+  entrance: {
     "a8:ba:25:e1:42:f0": -58,
     "a8:ba:25:e1:42:f2": -62,
     "a8:ba:25:e1:42:e0": -64,
@@ -7,7 +7,7 @@ export const ZONES ={
     "a8:ba:25:e1:ff:22": -73
   },
 
-  Innovation_Lab: {
+  innovation_lab: {
     "a8:ba:25:e1:06:a0": -71,
     "a8:ba:25:e1:06:a1": -74,
     "a8:ba:25:e1:06:a2": -72,
@@ -15,7 +15,7 @@ export const ZONES ={
     "a8:ba:25:e1:ff:22": -73
   },
 
-  Cafeteria: {
+  cafeteria: {
     "a8:ba:25:e1:ff:21": -51,
     "a8:ba:25:e1:ff:20": -54,
     "a8:ba:25:e1:47:70": -50,
@@ -27,7 +27,7 @@ export const ZONES ={
     "a8:ba:25:e1:52:60": -62
   },
 
-  Gaming_Arcade: {
+  gaming_arcade: {
     "a8:ba:25:e1:12:a0": -65,
     "a8:ba:25:e2:2b:30": -60,
     "a8:ba:25:e2:2b:31": -60,
@@ -37,7 +37,7 @@ export const ZONES ={
     "a8:ba:25:da:d3:d2": -71
   },
 
-  Admin_Block: {
+  admin_block: {
     "a8:ba:25:e1:52:60": -49,
     "a8:ba:25:e1:52:61": -52,
     "a8:ba:25:e1:52:62": -52,
@@ -48,7 +48,7 @@ export const ZONES ={
     "a8:ba:25:e2:0d:20": -72
   },
 
-  Reception: {
+  reception: {
     "a8:ba:25:e1:f6:40": -46,
     "a8:ba:25:e1:f6:41": -47,
     "a8:ba:25:e1:f6:50": -58,
