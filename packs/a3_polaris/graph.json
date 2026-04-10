@@ -1,0 +1,200 @@
+{
+    "packId": "a3_polaris",
+    "floor": "ground",
+    "version": "1.0.0",
+    "notes": "Based on Ground Floor Furniture Plan and Partition Plan — Rubenius Interior Wellbeing. All weights are approximate walking steps between zone centers. Update after physical walk-through.",
+    "nodes": {
+        "entrance": {
+            "label": "Main Entrance",
+            "zone_id": "entrance",
+            "floor": 0,
+            "description": "Main entry point from outside the building"
+        },
+        "reception": {
+            "label": "Reception",
+            "zone_id": "reception",
+            "floor": 0,
+            "description": "Reception desk with Polaris star ceiling installation and merchandise display"
+        },
+        "merchandise_display": {
+            "label": "Merchandise Display",
+            "zone_id": "merchandise_display",
+            "floor": 0,
+            "description": "Lobby display cabinets with campus memory items"
+        },
+        "radial_classroom": {
+            "label": "Radial Classroom",
+            "zone_id": "radial_classroom",
+            "floor": 0,
+            "description": "Semi-circular high-impact lecture and fireside chat space"
+        },
+        "creator_studio": {
+            "label": "Creator Studio",
+            "zone_id": "creator_studio",
+            "floor": 0,
+            "description": "Professional recording studio for students"
+        },
+        "creator_lounge": {
+            "label": "Creator Lounge",
+            "zone_id": "creator_lounge",
+            "floor": 0,
+            "description": "Informal brainstorming and prep area outside the studio"
+        },
+        "mentor_room": {
+            "label": "Mentor Room",
+            "zone_id": "mentor_room",
+            "floor": 0,
+            "description": "Access-controlled private space for faculty"
+        },
+        "arcade": {
+            "label": "Arcade",
+            "zone_id": "arcade",
+            "floor": 0,
+            "description": "Neon-lit gaming and unwinding zone"
+        },
+        "cafeteria": {
+            "label": "Cafeteria",
+            "zone_id": "cafeteria",
+            "floor": 0,
+            "description": "Warm café-style dining space"
+        },
+        "wormhole": {
+            "label": "Innovation Lab (Wormhole)",
+            "zone_id": "wormhole",
+            "floor": 0,
+            "description": "Innovation and build space with transition tunnel entrance"
+        },
+        "utility": {
+            "label": "Utility Area",
+            "zone_id": "utility",
+            "floor": 0,
+            "description": "Kitchen and service area behind cafeteria"
+        },
+        "corridor_main": {
+            "label": "Main Corridor",
+            "zone_id": "corridor_main",
+            "floor": 0,
+            "description": "Central walkway connecting all ground floor zones"
+        },
+        "staircase": {
+            "label": "Staircase",
+            "zone_id": "staircase",
+            "floor": 0,
+            "description": "Staircase to upper floors"
+        },
+        "lift": {
+            "label": "Lift",
+            "zone_id": "lift",
+            "floor": 0,
+            "description": "Lift / elevator access to all floors"
+        }
+    },
+    "edges": [
+        {
+            "from": "entrance",
+            "to": "reception",
+            "weight": 2,
+            "instruction": "Walk straight through the main entrance toward the reception desk."
+        },
+        {
+            "from": "reception",
+            "to": "merchandise_display",
+            "weight": 1,
+            "instruction": "The merchandise display is right beside you in the lobby."
+        },
+        {
+            "from": "reception",
+            "to": "corridor_main",
+            "weight": 2,
+            "instruction": "From reception, walk ahead into the main corridor."
+        },
+        {
+            "from": "corridor_main",
+            "to": "radial_classroom",
+            "weight": 3,
+            "instruction": "Continue along the corridor and turn left for the Radial Classroom."
+        },
+        {
+            "from": "corridor_main",
+            "to": "creator_lounge",
+            "weight": 3,
+            "instruction": "Walk along the corridor and you will see the Creator Lounge on your right."
+        },
+        {
+            "from": "creator_lounge",
+            "to": "creator_studio",
+            "weight": 1,
+            "instruction": "The Creator Studio is directly through the Creator Lounge."
+        },
+        {
+            "from": "corridor_main",
+            "to": "mentor_room",
+            "weight": 2,
+            "instruction": "The Mentor Room is off the main corridor. It is access controlled."
+        },
+        {
+            "from": "corridor_main",
+            "to": "arcade",
+            "weight": 4,
+            "instruction": "Head toward the back of the floor — you will hear the arcade before you see it."
+        },
+        {
+            "from": "corridor_main",
+            "to": "cafeteria",
+            "weight": 3,
+            "instruction": "The cafeteria is toward the far end of the corridor on your left."
+        },
+        {
+            "from": "cafeteria",
+            "to": "utility",
+            "weight": 1,
+            "instruction": "The kitchen and utility area is directly behind the cafeteria."
+        },
+        {
+            "from": "corridor_main",
+            "to": "wormhole",
+            "weight": 5,
+            "instruction": "Continue to the far end of the building and look for the tunnel entrance — that is the Wormhole."
+        },
+        {
+            "from": "corridor_main",
+            "to": "staircase",
+            "weight": 2,
+            "instruction": "The staircase is along the corridor to reach upper floors."
+        },
+        {
+            "from": "corridor_main",
+            "to": "lift",
+            "weight": 2,
+            "instruction": "The lift is near the staircase along the main corridor."
+        },
+        {
+            "from": "arcade",
+            "to": "cafeteria",
+            "weight": 2,
+            "instruction": "The cafeteria is just next to the arcade area."
+        },
+        {
+            "from": "radial_classroom",
+            "to": "creator_lounge",
+            "weight": 3,
+            "instruction": "From the Radial Classroom, head back along the corridor toward the Creator Lounge."
+        },
+        {
+            "from": "wormhole",
+            "to": "arcade",
+            "weight": 3,
+            "instruction": "From the Wormhole, head back and the arcade is to your right."
+        }
+    ],
+    "calibration_notes": {
+        "instructions": "Manav — walk each edge below and count your actual steps. Replace the weight values above with real step counts. One weight unit = approximately 5 normal walking steps.",
+        "priority_edges": [
+            "entrance → reception",
+            "reception → corridor_main",
+            "corridor_main → cafeteria",
+            "corridor_main → wormhole",
+            "corridor_main → radial_classroom"
+        ]
+    }
+}

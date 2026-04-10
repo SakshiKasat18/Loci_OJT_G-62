@@ -1,0 +1,107 @@
+{
+  "packId": "a3_polaris",
+  "floor": "ground",
+  "version": "1.0.0",
+  "collection_notes": "Collected by Manav Nayak — A3 Polaris School of Technology, Bengaluru. Each fingerprint is a 3-scan average from the zone center. Only APs with level > -75 included.",
+
+  "zones": [
+    {
+      "zone_id": "entrance",
+      "label": "Main Entrance",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from just inside main entrance door"
+    },
+    {
+      "zone_id": "reception",
+      "label": "Reception",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from center of reception desk area"
+    },
+    {
+      "zone_id": "merchandise_display",
+      "label": "Merchandise Display",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from in front of display cabinets in lobby"
+    },
+    {
+      "zone_id": "radial_classroom",
+      "label": "Radial Classroom",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from center of semi-circular seating area"
+    },
+    {
+      "zone_id": "creator_studio",
+      "label": "Creator Studio",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from inside studio. Note: acoustic panels may affect signal"
+    },
+    {
+      "zone_id": "creator_lounge",
+      "label": "Creator Lounge",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from center of lounge area outside studio"
+    },
+    {
+      "zone_id": "mentor_room",
+      "label": "Mentor Room",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from inside room if accessible"
+    },
+    {
+      "zone_id": "arcade",
+      "label": "Arcade",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from center of gaming area"
+    },
+    {
+      "zone_id": "cafeteria",
+      "label": "Cafeteria",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from middle of dining area"
+    },
+    {
+      "zone_id": "wormhole",
+      "label": "Innovation Lab (Wormhole)",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from inside the main lab space, past the entrance tunnel"
+    },
+    {
+      "zone_id": "utility",
+      "label": "Utility Area",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from kitchen/utility area if accessible"
+    },
+    {
+      "zone_id": "corridor_main",
+      "label": "Main Corridor",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from middle of main corridor"
+    },
+    {
+      "zone_id": "staircase",
+      "label": "Staircase",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from staircase landing on ground floor"
+    },
+    {
+      "zone_id": "lift",
+      "label": "Lift",
+      "fingerprint": [],
+      "collected_at": null,
+      "notes": "TODO — scan from outside lift doors on ground floor"
+    }
+  ]
+}

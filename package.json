@@ -1,6 +1,12 @@
 {
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "jsonwebtoken": "^9.0.3"
-  }
+    "expo": "^55.0.13",
+    "jsonwebtoken": "^9.0.3",
+    "react": "19.2.0",
+    "react-native": "0.83.4"
+  },
+  "name": "Loci_OJT_G-62",
+  "version": "1.0.0",
+  "scripts": {}
 }
