@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { useState } from "react";
 import { router } from "expo-router";
-import { API_BASE_URL } from "../constants/api";
+import { apiFetch } from "../constants/api";
 import { saveToken } from "../constants/auth";
 
 export default function Login() {
@@ -27,9 +27,8 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      const res = await apiFetch("/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), password }),
       });
 
@@ -37,7 +36,7 @@ export default function Login() {
 
       if (res.status === 200 && data.token) {
         await saveToken(data.token);
-        router.replace("/packs");
+        router.replace("/guide");
         return;
       }
 

@@ -8,7 +8,7 @@ export default function Index() {
     async function checkAuth() {
       const token = await getToken();
       if (token) {
-        router.replace("/packs");
+        router.replace("/guide");
       } else {
         router.replace("/login");
       }

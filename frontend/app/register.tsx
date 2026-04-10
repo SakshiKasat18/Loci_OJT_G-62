@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { useState } from "react";
 import { router } from "expo-router";
-import { API_BASE_URL } from "../constants/api";
+import { apiFetch } from "../constants/api";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -26,9 +26,8 @@ export default function Register() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      const res = await apiFetch("/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), password }),
       });
 

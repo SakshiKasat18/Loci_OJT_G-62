@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useEffect, useState } from "react";
 import { router } from "expo-router";
-import { API_BASE_URL } from "../constants/api";
+import { apiFetch } from "../constants/api";
 import { getToken, clearToken } from "../constants/auth";
 
 type Pack = {
@@ -35,11 +35,7 @@ export default function Packs() {
         return;
       }
 
-      const res = await fetch(`${API_BASE_URL}/packs`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await apiFetch("/packs", { token });
 
       if (res.status === 401) {
         await clearToken();
@@ -89,6 +85,28 @@ export default function Packs() {
       </View>
 
       {error && <Text style={styles.error}>{error}</Text>}
+
+      {/* ── Guide Demo Entry Point ───────────────────────────────────── */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.guideCard,
+          pressed && styles.guideCardPressed,
+        ]}
+        onPress={() => router.push("/guide")}
+        accessibilityLabel="Open audio guide demo"
+        accessibilityRole="button"
+      >
+        <View style={styles.guideCardInner}>
+          <Text style={styles.guideCardIcon}>🎧</Text>
+          <View style={styles.guideCardText}>
+            <Text style={styles.guideCardTitle}>Audio Guide — A3 Polaris</Text>
+            <Text style={styles.guideCardSubtitle}>
+              Speech pipeline demo · 6 zones · Event-driven
+            </Text>
+          </View>
+          <Text style={styles.guideCardArrow}>›</Text>
+        </View>
+      </Pressable>
 
       <FlatList
         data={packs}
@@ -171,5 +189,47 @@ const styles = StyleSheet.create({
     color: "#888",
     marginTop: 4,
     fontSize: 13,
+  },
+
+  // ── Guide Demo Card ───────────────────────────────────────────────────────
+  guideCard: {
+    backgroundColor: "#0a0a14",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#5b8cff",
+    marginBottom: 20,
+    overflow: "hidden",
+  },
+  guideCardPressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
+  guideCardInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    gap: 14,
+  },
+  guideCardIcon: {
+    fontSize: 28,
+  },
+  guideCardText: {
+    flex: 1,
+  },
+  guideCardTitle: {
+    color: "#f0f0f8",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 3,
+  },
+  guideCardSubtitle: {
+    color: "#5b8cff",
+    fontSize: 12,
+    opacity: 0.85,
+  },
+  guideCardArrow: {
+    color: "#5b8cff",
+    fontSize: 24,
+    fontWeight: "300",
   },
 });
