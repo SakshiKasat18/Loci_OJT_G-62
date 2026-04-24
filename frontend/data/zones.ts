@@ -1,4 +1,4 @@
-export const ZONES ={
+export const ZONES = {
   entrance: {
     "a8:ba:25:e1:42:f0": -58,
     "a8:ba:25:e1:42:f2": -62,
@@ -8,11 +8,13 @@ export const ZONES ={
   },
 
   innovation_lab: {
-    "a8:ba:25:e1:06:a0": -71,
-    "a8:ba:25:e1:06:a1": -74,
-    "a8:ba:25:e1:06:a2": -72,
-    "a8:ba:25:e1:ff:20": -75,
-    "a8:ba:25:e1:ff:22": -73
+    "a8:ba:25:db:75:60": -61,
+    "a8:ba:25:db:75:61": -62,
+    "a8:ba:25:db:75:62": -65,
+
+    "a8:ba:25:e1:20:b0": -67,
+    "a8:ba:25:e1:20:b1": -67,
+    "a8:ba:25:e1:20:b2": -67
   },
 
   cafeteria: {

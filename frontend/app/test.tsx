@@ -1,8 +1,8 @@
-import { View, Button, Text, ScrollView, Alert } from "react-native";
+import { View, Button, Text, ScrollView, Alert, TextInput } from "react-native";
 import { useState, useEffect } from "react";
 import * as Clipboard from "expo-clipboard";
 import { scanWifi } from "../services/wifiScanner";
-import { matchZone } from "../services/zoneMatcher";
+import { matchZone, resetMatcher } from "../services/zoneMatcher";
 import { fetchZones } from "../services/fetchZones";
 import { testFirestore } from "../services/testFirestore";
 
@@ -24,10 +24,42 @@ type ZoneMap = {
 };
 
 // -------------------------------
+// 🔥 Stable Scan (averages multiple scans)
+// -------------------------------
+async function getStableScan(): Promise<AccessPoint[]> {
+  const scans: AccessPoint[][] = [];
+
+  for (let i = 0; i < 4; i++) {
+    const res = await scanWifi();
+    scans.push(res);
+    await new Promise((r) => setTimeout(r, 800));
+  }
+
+  const apMap: Record<string, { total: number; count: number }> = {};
+
+  scans.forEach((scan) => {
+    scan.forEach((ap) => {
+      if (!apMap[ap.BSSID]) {
+        apMap[ap.BSSID] = { total: 0, count: 0 };
+      }
+      apMap[ap.BSSID].total += ap.level;
+      apMap[ap.BSSID].count++;
+    });
+  });
+
+  return Object.entries(apMap).map(([BSSID, data]) => ({
+    BSSID,
+    level: data.total / data.count,
+  }));
+}
+
+// -------------------------------
 // Component
 // -------------------------------
 export default function Test() {
   const [logs, setLogs] = useState<string[]>([]);
+  const [zoneLabel, setZoneLabel] = useState<string>("");
+
   const [detected, setDetected] = useState<{
     zone: string | null;
     confidence: number;
@@ -36,20 +68,18 @@ export default function Test() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [zoneMap, setZoneMap] = useState<ZoneMap>({});
 
+  const [autoScanning, setAutoScanning] = useState<boolean>(false);
+
   // -------------------------------
-  // Load zones from Firebase
+  // Load zones
   // -------------------------------
   useEffect(() => {
     async function load() {
-      await testFirestore(); // optional debug
+      await testFirestore();
 
       const data: Zone[] = await fetchZones();
-
-      console.log("Zones from Firebase:", data);
-
       setZones(data);
 
-      // 🔥 Convert to ZoneMap once
       const map: ZoneMap = {};
       data.forEach((z) => {
         if (z.fingerprint) {
@@ -64,39 +94,61 @@ export default function Test() {
   }, []);
 
   // -------------------------------
-  // Scan handler
+  // 🔥 Auto Scan Loop (FIXED)
+  // -------------------------------
+  useEffect(() => {
+    if (!autoScanning) return;
+
+    const interval = setInterval(async () => {
+      try {
+        // 🔥 USE STABLE SCAN
+        const res: AccessPoint[] = await getStableScan();
+
+        const filtered = res.filter((ap) => ap.level > -80);
+
+        console.log("📡 AP count:", filtered.length);
+
+        const result = matchZone(filtered, zoneMap);
+
+        console.log("📍 RESULT:", result);
+
+        setDetected({
+          zone: result.zone,
+          confidence: result.confidence,
+        });
+      } catch (e) {
+        console.log("Auto scan error:", e);
+      }
+    }, 3000); // 🔥 slower, more stable
+
+    return () => clearInterval(interval);
+  }, [autoScanning, zoneMap]);
+
+  // -------------------------------
+  // Manual Scan
   // -------------------------------
   const handleScan = async () => {
-    const res: AccessPoint[] = await scanWifi();
+    const res: AccessPoint[] = await getStableScan();
 
-    // Filter weak signals
-    const filtered = res.filter((ap) => ap.level > -75);
+    const filtered = res.filter((ap) => ap.level > -80);
 
-    // 🔥 CORE MATCHING
+    console.log("📡 AP count:", filtered.length);
+
     const result = matchZone(filtered, zoneMap);
 
-    setDetected(result);
+    console.log("📍 RESULT:", result);
 
-    console.log("Detected zone:", result);
-    console.log("Filtered scan:", filtered);
-    console.log("ZoneMap:", zoneMap);
-
-    // Debug: fingerprint sizes
-    Object.keys(zoneMap).forEach((zoneName) => {
-      console.log(
-        "Zone:",
-        zoneName,
-        Object.keys(zoneMap[zoneName]).length
-      );
+    setDetected({
+      zone: result.zone,
+      confidence: result.confidence,
     });
 
-    // Store logs
     const formatted = JSON.stringify(res, null, 2);
     setLogs((prev) => [...prev, formatted]);
   };
 
   // -------------------------------
-  // Copy logs
+  // Copy Logs
   // -------------------------------
   const handleCopy = async () => {
     if (logs.length === 0) {
@@ -113,10 +165,18 @@ export default function Test() {
   };
 
   // -------------------------------
-  // Clear logs
+  // Clear Logs
   // -------------------------------
   const handleClear = () => {
     setLogs([]);
+    setDetected(null);
+  };
+
+  // -------------------------------
+  // 🔥 Manual Reset (IMPORTANT)
+  // -------------------------------
+  const handleReset = () => {
+    resetMatcher(); // 🔥 THIS is the real reset
     setDetected(null);
   };
 
@@ -125,7 +185,33 @@ export default function Test() {
   // -------------------------------
   return (
     <View style={{ flex: 1, padding: 20 }}>
+      <TextInput
+        placeholder="Type zone name before scanning"
+        value={zoneLabel}
+        onChangeText={setZoneLabel}
+        style={{
+          borderWidth: 1,
+          borderColor: "#aaa",
+          borderRadius: 6,
+          padding: 8,
+          marginBottom: 10,
+          fontSize: 14,
+        }}
+      />
+
       <Button title="Scan WiFi" onPress={handleScan} />
+
+      <View style={{ height: 10 }} />
+
+      <Button
+        title={autoScanning ? "⏹ Stop Auto Scan" : "▶ Start Auto Scan"}
+        onPress={() => setAutoScanning((prev) => !prev)}
+        color={autoScanning ? "#c0392b" : "#27ae60"}
+      />
+
+      <View style={{ height: 10 }} />
+
+      <Button title="🔄 Reset Position" onPress={handleReset} />
 
       <View style={{ height: 10 }} />
 
