@@ -1,12 +1,17 @@
-
-# local env
-backend/.env
-
-# deps
+# dependencies
+node_modules/
+frontend/node_modules/
 backend/node_modules/
 
 # local env
+.env
 backend/.env
+frontend/.env
 
-# deps
-backend/node_modules/
+# macOS
+.DS_Store
+
+# Expo
+frontend/.expo/
+frontend/dist/
+frontend/web-build/

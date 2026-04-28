@@ -21,19 +21,25 @@ import {
   getZoneStatusLine,
 } from "../core/ZoneScriptMapper";
 
+import { startIMU, stopIMU } from "../services/imuTracker";
+import { speechEngine } from "../core/SpeechEngine";
+import { spatialOrchestrator } from "../services/spatialOrchestrator";
+import { eventBus } from "../core/EventBus";
+
 const ZONES = [
+  "entrance",
   "reception",
   "merchandise_display",
   "radial_classroom",
-  "creator_zone",
+  "admin_block",
   "cafeteria",
-  "wormhole",
+  "gaming_room",
+  "innovation_lab",
 ] as const;
 
 const TEAL = "#2dd4aa";
 const SEGMENT_PAUSE = 800;
 const START_DELAY = 800;
-const BETWEEN_DELAY = 2000;
 
 type State = "idle" | "playing" | "paused" | "done";
 
@@ -49,11 +55,12 @@ export default function Guide() {
   const [replayHint, setReplayHint] = useState(false);
   const [debugText, setDebugText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
+  const [orchData, setOrchData] = useState<any>(null);
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isStoppingRef = useRef(false);          // lock: prevents double-stop race
-  const recordingStartTimeRef = useRef(0);      // timestamp: enforces minimum duration
+  const isStoppingRef = useRef(false);
+  const recordingStartTimeRef = useRef(0);
 
   const cancelRef = useRef(false);
   const sessionRef = useRef(0);
@@ -89,13 +96,12 @@ export default function Guide() {
     };
   }, []);
 
-  // Global audio session — prevents cracking and session conflicts
+  // Global audio session
   useEffect(() => {
     Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,          // must be true — Android needs this to acquire audio focus
+      shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     });
   }, []);
@@ -142,27 +148,12 @@ export default function Guide() {
     [textOpacity]
   );
 
-  const openSheet = useCallback(() => {
-    setShowAsk(true);
-    Animated.spring(sheetAnim, { toValue: 1, useNativeDriver: true, bounciness: 3 }).start();
-  }, [sheetAnim]);
-
-  const closeSheet = useCallback(() => {
-    Animated.timing(sheetAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start(() =>
-      setShowAsk(false)
-    );
-  }, [sheetAnim]);
-
-  const sheetY = sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [360, 0] });
-
   const speak = useCallback(
     async (text: string, opts?: Speech.SpeechOptions): Promise<void> => {
-      // Block TTS if microphone is active — prevents audio session corruption
       if (recordingRef.current) {
         console.log("[TTS] Blocked — recording is active.");
         return;
       }
-      // Switch session to playback mode before speaking
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
@@ -176,7 +167,7 @@ export default function Guide() {
           rate: 0.72,
           pitch: 1.0,
           onDone: resolve,
-          onError: resolve,
+          onError: () => resolve(),
           onStopped: resolve,
           ...opts,
         });
@@ -184,6 +175,19 @@ export default function Guide() {
     },
     []
   );
+
+  const openSheet = useCallback(() => {
+    setShowAsk(true);
+    Animated.spring(sheetAnim, { toValue: 1, useNativeDriver: true, bounciness: 3 }).start();
+  }, [sheetAnim]);
+
+  const closeSheet = useCallback(() => {
+    Animated.timing(sheetAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start(() =>
+      setShowAsk(false)
+    );
+  }, [sheetAnim]);
+
+
 
   const playZone = useCallback(
     async (index: number) => {
@@ -219,24 +223,23 @@ export default function Guide() {
       if (cancelRef.current || sessionRef.current !== session) return;
 
       stopPulse();
-
-      if (index < ZONES.length - 1) {
-        crossFadeText("Walking…");
-        await wait(BETWEEN_DELAY);
-        if (cancelRef.current || sessionRef.current !== session) return;
-        playZone(index + 1);
-      } else {
+      
+      // AUTO-ADVANCE REMOVED: Now controlled by spatialOrchestrator events
+      if (index >= ZONES.length - 1) {
         setState("done");
         crossFadeText("You've reached the end.");
+      } else {
+        crossFadeText("Waiting for next zone…");
       }
     },
     [startPulse, stopPulse, crossFadeText, speak]
   );
 
+  // --- Handlers ---
+
   const handleStart = useCallback(() => {
-    setZoneIndex(0);
-    playZone(0);
-  }, [playZone]);
+    spatialOrchestrator.manualStart();
+  }, []);
 
   const handleStop = useCallback(() => {
     cancelRef.current = true;
@@ -280,7 +283,6 @@ export default function Guide() {
 
   const handleAskPrompt = useCallback(
     async (type: "where" | "what" | "next") => {
-      // Fully interrupt zone audio — do not resume after
       cancelRef.current = true;
       sessionRef.current++;
       Speech.stop();
@@ -311,7 +313,7 @@ export default function Guide() {
         const res = await apiFetch("/ai/qa", {
           method: "POST",
           token: token ?? undefined,
-          body: JSON.stringify({ question, zone: zoneId }),
+          body: JSON.stringify({ question, pack_id: "a3_polaris", zone: zoneId }),
         });
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -405,7 +407,7 @@ export default function Guide() {
       setState("paused");
 
       // ── Send transcript to AI ────────────────────────────────────────────
-      const zoneId = ZONES[zoneIndex];
+      const zoneId = ZONES[zoneIndex] ?? "unknown";
       console.log("[Ask Loci] Sending to AI:", transcript, "| Zone:", zoneId);
       setDebugText(`Sending to AI:\n"${transcript}"`);
 
@@ -413,7 +415,7 @@ export default function Guide() {
       const res = await apiFetch("/ai/qa", {
         method: "POST",
         token: token ?? undefined,
-        body: JSON.stringify({ question: transcript, zone: zoneId }),
+        body: JSON.stringify({ question: transcript, pack_id: "a3_polaris", zone: zoneId }),
       });
 
       if (!res.ok) throw new Error(`AI HTTP ${res.status}`);
@@ -545,6 +547,67 @@ export default function Guide() {
     }
   }, [isRecording, transcribeAudio]);
 
+  // --- Effects ---
+
+  // Entry fade-in
+  useEffect(() => {
+    Animated.timing(screenFade, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
+  }, [screenFade]);
+
+  // Lifecycle and Services
+  useEffect(() => {
+    startIMU();
+    speechEngine.init();
+    spatialOrchestrator.start();
+
+    const unsubscribe = eventBus.subscribe((event) => {
+      if (event.type === "ZONE_CHANGED") {
+        const idx = ZONES.indexOf(event.zoneId as any);
+        if (idx !== -1) {
+          setZoneIndex(idx);
+          setState("playing");
+          crossFadeText(getZoneStatusLine(event.zoneId));
+          startPulse();
+          setTimeout(() => stopPulse(), 8000);
+        }
+      }
+    });
+
+    const timer = setInterval(() => {
+      setOrchData(spatialOrchestrator.getData());
+    }, 1000);
+
+    return () => {
+      cancelRef.current = true;
+      Speech.stop();
+      stopIMU();
+      speechEngine.destroy();
+      spatialOrchestrator.stop();
+      unsubscribe();
+      clearInterval(timer);
+    };
+  }, [crossFadeText, startPulse, stopPulse]);
+
+  // Idle breathing
+  useEffect(() => {
+    if (state !== "idle") {
+      idleNodeAnim.stopAnimation();
+      idleNodeAnim.setValue(0.4);
+      return;
+    }
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(idleNodeAnim, { toValue: 1, duration: 1100, useNativeDriver: true }),
+        Animated.timing(idleNodeAnim, { toValue: 0.4, duration: 1100, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [state, idleNodeAnim]);
+
+  const sheetY = sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [360, 0] });
   const isActive = state === "playing" || state === "paused";
   const isPlaying = state === "playing";
   const isPaused = state === "paused";
@@ -555,7 +618,6 @@ export default function Guide() {
     <Animated.View style={[styles.root, { opacity: screenFade }]}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* Top bar */}
       <View style={styles.topBar}>
         <Text style={styles.topLocation}>A3 Polaris — Ground Floor</Text>
         <Pressable onPress={handleLogout} style={styles.logoutBtn}>
@@ -563,10 +625,7 @@ export default function Guide() {
         </Pressable>
       </View>
 
-      {/* Main area: left = content, right = path */}
       <View style={styles.mainArea}>
-
-        {/* Left: text content */}
         <View style={styles.contentCol}>
           {state === "idle" && (
             <View>
@@ -590,25 +649,36 @@ export default function Guide() {
                 </Text>
               )}
               <Text style={styles.statusText}>{statusText}</Text>
-
-              {replayHint && (
-                <Text style={styles.replayHint}>Replay to hear this again</Text>
-              )}
-
+              {replayHint && <Text style={styles.replayHint}>Replay to hear this again</Text>}
               {isDone && (
-                <Pressable
-                  style={({ pressed }) => [styles.restartBtn, pressed && styles.pressed]}
-                  onPress={handleStart}
-                  accessibilityRole="button"
-                >
+                <Pressable style={styles.restartBtn} onPress={handleStart}>
                   <Text style={styles.restartBtnText}>Restart Tour</Text>
                 </Pressable>
               )}
             </Animated.View>
           )}
+
+          {orchData && (
+            <View style={styles.debugBox}>
+              <Text style={styles.debugText}>State: {orchData.currentState}</Text>
+              <Text style={styles.debugText}>Zone: {orchData.currentZone || "—"} ({Math.round(orchData.confidence * 100)}%)</Text>
+              <Text style={styles.debugText}>GPS: {orchData.gpsAccuracy.toFixed(1)}m | WiFi: {orchData.wifiCount}</Text>
+              <Text style={styles.debugText}>Motion: {orchData.isWalking ? "Walking" : "Still"}</Text>
+            </View>
+          )}
+
+          {orchData?.currentState === "ASKING_ZONE" && (
+            <View style={styles.promptActions}>
+              <Pressable style={[styles.actionBtn, styles.yesBtn]} onPress={() => spatialOrchestrator.handleResponse(true)}>
+                <Text style={styles.actionBtnText}>YES</Text>
+              </Pressable>
+              <Pressable style={[styles.actionBtn, styles.noBtn]} onPress={() => spatialOrchestrator.handleResponse(false)}>
+                <Text style={styles.actionBtnText}>NO</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
 
-        {/* Right: vertical path */}
         <View style={styles.pathCol}>
           {ZONES.map((_, i) => {
             const completed = isActive && i < zoneIndex;
@@ -617,86 +687,56 @@ export default function Guide() {
             const isIdleFirst = state === "idle" && i === 0;
             return (
               <View key={i} style={styles.nodeWrap}>
-                <Animated.View
-                  style={[
-                    styles.node,
-                    completed && styles.nodeCompleted,
-                    current && styles.nodeCurrent,
-                    upcoming && styles.nodeUpcoming,
-                    current && { transform: [{ scale: pulseScale }] },
-                    isIdleFirst && { opacity: idleNodeAnim, borderColor: TEAL },
-                  ]}
-                >
+                <Animated.View style={[
+                  styles.node,
+                  completed && styles.nodeCompleted,
+                  current && styles.nodeCurrent,
+                  upcoming && styles.nodeUpcoming,
+                  current && { transform: [{ scale: pulseScale }] },
+                  isIdleFirst && { opacity: idleNodeAnim, borderColor: TEAL },
+                ]}>
                   {current && <View style={styles.nodeInner} />}
                 </Animated.View>
-                {i < ZONES.length - 1 && (
-                  <View style={[styles.vline, completed && styles.vlineCompleted]} />
-                )}
+                {i < ZONES.length - 1 && <View style={[styles.vline, completed && styles.vlineCompleted]} />}
               </View>
             );
           })}
         </View>
       </View>
 
-      {/* Controls */}
       {isActive && (
         <View style={styles.controls}>
           {isPlaying && (
-            <Pressable
-              style={({ pressed }) => [styles.ctrlBtn, pressed && styles.pressed]}
-              onPress={handleStop}
-            >
+            <Pressable style={styles.ctrlBtn} onPress={handleStop}>
               <Text style={styles.ctrlText}>Stop</Text>
             </Pressable>
           )}
-          <Pressable
-            style={({ pressed }) => [styles.ctrlBtn, pressed && styles.pressed]}
-            onPress={handleReplay}
-          >
+          <Pressable style={styles.ctrlBtn} onPress={handleReplay}>
             <Text style={[styles.ctrlText, isPaused && styles.ctrlPrimary]}>Replay</Text>
           </Pressable>
-          <Pressable
-            style={({ pressed }) => [styles.ctrlBtn, pressed && styles.pressed]}
-            onPress={handleSkip}
-          >
+          <Pressable style={styles.ctrlBtn} onPress={handleSkip}>
             <Text style={styles.ctrlText}>Skip</Text>
           </Pressable>
         </View>
       )}
 
-      {/* Floating Ask Loci button */}
-      <Pressable
-        style={({ pressed }) => [styles.aiFloat, pressed && { opacity: 0.7 }]}
-        onPress={openSheet}
-        accessibilityRole="button"
-        accessibilityLabel="Ask Loci"
-      >
+      <Pressable style={styles.aiFloat} onPress={openSheet}>
         <Text style={styles.aiIcon}>◎</Text>
       </Pressable>
 
-      {/* Ask Loci bottom sheet */}
       <Modal transparent visible={showAsk} animationType="none" onRequestClose={closeSheet}>
         <Pressable style={styles.backdrop} onPress={closeSheet} />
         <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetY }] }]}>
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>Ask Loci</Text>
           <View style={styles.promptList}>
-            <Pressable
-              style={({ pressed }) => [styles.prompt, pressed && styles.pressed]}
-              onPress={() => handleAskPrompt("where")}
-            >
+            <Pressable style={styles.prompt} onPress={() => handleAskPrompt("where")}>
               <Text style={styles.promptText}>Where am I right now?</Text>
             </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.prompt, pressed && styles.pressed]}
-              onPress={() => handleAskPrompt("what")}
-            >
+            <Pressable style={styles.prompt} onPress={() => handleAskPrompt("what")}>
               <Text style={styles.promptText}>What is this space?</Text>
             </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.prompt, pressed && styles.pressed]}
-              onPress={() => handleAskPrompt("next")}
-            >
+            <Pressable style={styles.prompt} onPress={() => handleAskPrompt("next")}>
               <Text style={styles.promptText}>Where do I go next?</Text>
             </Pressable>
           </View>
@@ -981,22 +1021,51 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  micIcon: {
-    color: TEAL,
-    fontSize: 20,
-  },
   micBtnActive: {
     backgroundColor: "#fff0f0",
     borderColor: "#ff4444",
   },
+  micIcon: {
+    color: TEAL,
+    fontSize: 20,
+  },
   micIconActive: {
     color: "#ff4444",
   },
+  debugBox: {
+    marginTop: 40,
+    padding: 12,
+    backgroundColor: "#f8f8f8",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#eee",
+  },
   debugText: {
-    fontSize: 12,
+    fontSize: 10,
     color: "#888",
-    marginBottom: 16,
-    lineHeight: 18,
     fontFamily: "monospace" as any,
+    marginBottom: 2,
+  },
+  promptActions: {
+    flexDirection: "row" as const,
+    marginTop: 24,
+    gap: 12,
+  },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center" as const,
+  },
+  yesBtn: {
+    backgroundColor: TEAL,
+  },
+  noBtn: {
+    backgroundColor: "#f0f0f0",
+  },
+  actionBtnText: {
+    color: "#fff",
+    fontWeight: "bold" as const,
+    fontSize: 14,
   },
 });

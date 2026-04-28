@@ -1,24 +1,6 @@
-import { useEffect } from "react";
-import { View, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
-import { getToken } from "../constants/auth";
+import { Redirect } from "expo-router";
 
 export default function Index() {
-  useEffect(() => {
-    async function checkAuth() {
-      const token = await getToken();
-      if (token) {
-        router.replace("/guide");
-      } else {
-        router.replace("/login");
-      }
-    }
-    checkAuth();
-  }, []);
-
-  return (
-    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-      <ActivityIndicator />
-    </View>
-  );
+  // Bypassing auth for testing - Redirect is safer than router.replace in useEffect
+  return <Redirect href="/guide" />;
 }
