@@ -17,6 +17,13 @@ const ZONES: Record<string, ZoneData> = {
     ],
   },
 
+  entrance: {
+    label: "Entrance",
+    statusLine: "You're at the entrance.",
+    shortDesc: "The threshold of the LOCI experience.",
+    segments: ["You're at the entrance."],
+  },
+
   merchandise_display: {
     label: "Merchandise Display",
     statusLine: "The campus keeps its memories here.",
@@ -38,6 +45,13 @@ const ZONES: Record<string, ZoneData> = {
       "It's designed for talks that matter — founders, speakers, panels, fireside conversations.",
       "Wherever you're sitting, the room works equally well for you.",
     ],
+  },
+
+  admin_block: {
+    label: "Admin Block",
+    statusLine: "The campus brain.",
+    shortDesc: "Where operations and admissions meet.",
+    segments: ["This is the admin block where all campus operations are managed."],
   },
 
   creator_zone: {
@@ -69,6 +83,28 @@ const ZONES: Record<string, ZoneData> = {
       "In physics, a wormhole is a shortcut through space-time.",
       "Walking through this tunnel is designed to trigger exactly that kind of shift.",
       "You're leaving passive learning behind. What's ahead is built entirely for doing.",
+    ],
+  },
+
+  gaming_room: {
+    label: "Gaming Room",
+    statusLine: "Unplug and play.",
+    shortDesc: "A high-energy social hub for relaxation and competition.",
+    segments: [
+      "This is the gaming room.",
+      "Professional setups, fast internet, and the best place to blow off steam after a long building session.",
+      "Remember, the best builders also know when to hit pause."
+    ],
+  },
+
+  innovation_lab: {
+    label: "Innovation Lab",
+    statusLine: "The future is built here.",
+    shortDesc: "A dedicated workshop for hardware prototyping and experimental tech.",
+    segments: [
+      "You've reached the Innovation Lab — the absolute edge of campus.",
+      "This is where hardware and software collide. Prototyping, soldering, 3D printing — it all happens right here.",
+      "You have come to the end of the tour. Feel free to explore!"
     ],
   },
 };

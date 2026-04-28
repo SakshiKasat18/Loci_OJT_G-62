@@ -5,6 +5,9 @@ import { scanWifi } from "../services/wifiScanner";
 import { matchZone, resetMatcher } from "../services/zoneMatcher";
 import { fetchZones } from "../services/fetchZones";
 import { testFirestore } from "../services/testFirestore";
+import { spatialOrchestrator } from "../services/spatialOrchestrator";
+import { startIMU, stopIMU } from "../services/imuTracker";
+import { speechEngine } from "../core/SpeechEngine";
 
 // -------------------------------
 // Types
@@ -69,6 +72,7 @@ export default function Test() {
   const [zoneMap, setZoneMap] = useState<ZoneMap>({});
 
   const [autoScanning, setAutoScanning] = useState<boolean>(false);
+  const [orchData, setOrchData] = useState<any>(null);
 
   // -------------------------------
   // Load zones
@@ -91,6 +95,22 @@ export default function Test() {
     }
 
     load();
+
+    // Start services for testing
+    startIMU();
+    speechEngine.init();
+    spatialOrchestrator.start();
+
+    const timer = setInterval(() => {
+      setOrchData(spatialOrchestrator.getData());
+    }, 1000);
+
+    return () => {
+      stopIMU();
+      speechEngine.destroy();
+      spatialOrchestrator.stop();
+      clearInterval(timer);
+    };
   }, []);
 
   // -------------------------------
@@ -227,6 +247,25 @@ export default function Test() {
           Zone: {detected.zone ?? "None"} | Confidence:{" "}
           {detected.confidence}
         </Text>
+      )}
+
+      {/* Orchestrator Logs */}
+      {orchData && (
+        <View style={{ marginTop: 20, padding: 15, backgroundColor: "#f0f0f0", borderRadius: 8 }}>
+          <Text style={{ fontWeight: "bold", marginBottom: 5 }}>🧠 Spatial Orchestrator</Text>
+          <Text>State: {orchData.currentState}</Text>
+          <Text>Zone: {orchData.currentZone || "—"}</Text>
+          <Text>Confidence: {orchData.confidence}</Text>
+          <Text>GPS Accuracy: {orchData.gpsAccuracy.toFixed(1)}m</Text>
+          <Text>WiFi Count: {orchData.wifiCount}</Text>
+          <Text>Avg RSSI: {orchData.avgRSSI.toFixed(1)}</Text>
+          <Text>Is Walking: {orchData.isWalking ? "✅ YES" : "❌ NO"}</Text>
+          
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <Button title="YES" onPress={() => spatialOrchestrator.handleResponse(true)} />
+              <Button title="NO" onPress={() => spatialOrchestrator.handleResponse(false)} />
+          </View>
+        </View>
       )}
 
       {/* Logs */}
