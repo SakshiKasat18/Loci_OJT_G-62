@@ -10,8 +10,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { router } from "expo-router";
 import * as Speech from "expo-speech";
+import { Audio } from "expo-av";
 
 import { getToken, clearToken } from "../constants/auth";
+import { apiFetch } from "../constants/api";
 import {
   getZoneSegments,
   getZoneLabel,
@@ -45,6 +47,13 @@ export default function Guide() {
   const [statusText, setStatusText] = useState("");
   const [showAsk, setShowAsk] = useState(false);
   const [replayHint, setReplayHint] = useState(false);
+  const [debugText, setDebugText] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isStoppingRef = useRef(false);          // lock: prevents double-stop race
+  const recordingStartTimeRef = useRef(0);      // timestamp: enforces minimum duration
 
   const cancelRef = useRef(false);
   const sessionRef = useRef(0);
@@ -78,6 +87,17 @@ export default function Guide() {
       cancelRef.current = true;
       Speech.stop();
     };
+  }, []);
+
+  // Global audio session — prevents cracking and session conflicts
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,          // must be true — Android needs this to acquire audio focus
+      playThroughEarpieceAndroid: false,
+    });
   }, []);
 
   // Idle first-node breathing animation
@@ -136,8 +156,21 @@ export default function Guide() {
   const sheetY = sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [360, 0] });
 
   const speak = useCallback(
-    (text: string, opts?: Speech.SpeechOptions): Promise<void> =>
-      new Promise((resolve) => {
+    async (text: string, opts?: Speech.SpeechOptions): Promise<void> => {
+      // Block TTS if microphone is active — prevents audio session corruption
+      if (recordingRef.current) {
+        console.log("[TTS] Blocked — recording is active.");
+        return;
+      }
+      // Switch session to playback mode before speaking
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+      Speech.stop();
+      return new Promise((resolve) => {
         Speech.speak(text, {
           language: "en-IN",
           rate: 0.72,
@@ -147,7 +180,8 @@ export default function Guide() {
           onStopped: resolve,
           ...opts,
         });
-      }),
+      });
+    },
     []
   );
 
@@ -255,24 +289,261 @@ export default function Guide() {
       setReplayHint(false);
 
       const zoneId = ZONES[zoneIndex];
-      const label = getZoneLabel(zoneId);
-      const desc = getZoneShortDesc(zoneId);
-      const nextLabel =
-        zoneIndex < ZONES.length - 1 ? getZoneLabel(ZONES[zoneIndex + 1]) : null;
 
-      const responses: Record<string, string> = {
-        where: `You're at ${label}.`,
-        what: desc,
-        next: nextLabel ? `Your next stop is ${nextLabel}.` : "This is your final stop.",
+      const questions: Record<string, string> = {
+        where: "Where am I right now?",
+        what: "What is this space?",
+        next: "Where do I go next?",
       };
+
+      const question = questions[type];
 
       closeSheet();
       await wait(300);
-      await speak(responses[type], { rate: 0.78 });
-      setReplayHint(true);
+
+      // ── Debug: sending
+      setDebugText(`Sending: "${question}"`);
+      crossFadeText("Thinking...");
+      console.log("[Ask Loci] Question:", question, "| Zone:", zoneId);
+
+      try {
+        const token = await getToken();
+        const res = await apiFetch("/ai/qa", {
+          method: "POST",
+          token: token ?? undefined,
+          body: JSON.stringify({ question, zone: zoneId }),
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        const answer = data.answer || "I don't have that information.";
+
+        // ── Debug: response received
+        console.log("[Ask Loci] AI Response:", answer);
+        setDebugText(`Asked: "${question}"\nAI: "${answer}"`);
+
+        await speak(answer, { rate: 0.78 });
+      } catch (err) {
+        console.warn("[Ask Loci] Error:", err);
+        setDebugText("Something went wrong.");
+        await speak("Something went wrong.", { rate: 0.78 });
+      } finally {
+        setReplayHint(true);
+      }
     },
-    [zoneIndex, closeSheet, speak, stopPulse]
+    [zoneIndex, closeSheet, speak, stopPulse, crossFadeText]
   );
+
+  // ── Deepgram STT helper — called after every recording stop ──────────────
+  const transcribeAudio = useCallback(async (uri: string) => {
+    console.log("[Deepgram] Sending file:", uri);
+    setDebugText(`Sending to Deepgram...\n${uri}`);
+
+    try {
+      const fileRes = await fetch(uri);
+      // FIX (Stage 5): verify local file fetch actually succeeded
+      if (!fileRes.ok) {
+        console.warn("[Deepgram] Audio file fetch failed:", fileRes.status);
+        setDebugText(`Failed to read audio file (HTTP ${fileRes.status}).`);
+        return;
+      }
+      const audioBlob = await fileRes.blob();
+
+      // ── File size guard — reject recordings that are too short ───────────
+      const fileSizeKB = audioBlob.size / 1024;
+      console.log(`[Deepgram] File size: ${fileSizeKB.toFixed(1)} KB`);
+      if (fileSizeKB < 10) {
+        console.warn("[Deepgram] File too small — recording likely too short.");
+        setDebugText(`Recording too short (${fileSizeKB.toFixed(1)} KB)\nHold mic longer and speak clearly.`);
+        await speak("Recording was too short. Please hold and speak again.", { rate: 0.78 });
+        return;
+      }
+
+      const dgRes = await fetch(
+        "https://api.deepgram.com/v1/listen?model=nova-2&language=en",
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Token 57a547e7e05d060a0f81139cbf0868ec36fd194c",
+            "Content-Type": "audio/mp4", // .m4a container = audio/mp4 MIME type
+          },
+          body: audioBlob,
+        }
+      );
+
+      const dgData = await dgRes.json();
+      console.log("[Deepgram] Full response:", JSON.stringify(dgData));
+
+      if (!dgRes.ok) {
+        console.warn("[Deepgram] API error:", dgData);
+        setDebugText(`Deepgram error:\n${JSON.stringify(dgData)}`);
+        return;
+      }
+
+      const transcript: string =
+        dgData?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
+      const confidence = dgData?.results?.channels?.[0]?.alternatives?.[0]?.confidence ?? "n/a";
+      const duration = dgData?.metadata?.duration ?? "n/a";
+      console.log(`[Deepgram] Confidence: ${confidence} | Duration: ${duration}s`);
+
+      if (!transcript.trim()) {
+        console.log("[Deepgram] No speech detected.");
+        setDebugText("No speech detected.");
+        await speak("I didn't catch that. Please try again.", { rate: 0.78 });
+        return;
+      }
+
+      console.log("[Deepgram] Transcript:", transcript);
+      setDebugText(`Transcript:\n"${transcript}"`);
+
+      // ── Stop any ongoing narration before answering ──────────────────────
+      cancelRef.current = true;
+      sessionRef.current++;
+      Speech.stop();
+      stopPulse();
+      setState("paused");
+
+      // ── Send transcript to AI ────────────────────────────────────────────
+      const zoneId = ZONES[zoneIndex];
+      console.log("[Ask Loci] Sending to AI:", transcript, "| Zone:", zoneId);
+      setDebugText(`Sending to AI:\n"${transcript}"`);
+
+      const token = await getToken();
+      const res = await apiFetch("/ai/qa", {
+        method: "POST",
+        token: token ?? undefined,
+        body: JSON.stringify({ question: transcript, zone: zoneId }),
+      });
+
+      if (!res.ok) throw new Error(`AI HTTP ${res.status}`);
+
+      const data = await res.json();
+      const answer = data.answer || "I don't have that information.";
+
+      console.log("[Ask Loci] AI Response:", answer);
+      setDebugText(`Asked: "${transcript}"\nAI: "${answer}"`);
+
+      await speak(answer, { rate: 0.78 });
+      setReplayHint(true);
+    } catch (err) {
+      console.warn("[Deepgram] Fetch error:", err);
+      setDebugText("Something went wrong.");
+      await speak("Something went wrong.", { rate: 0.78 });
+    }
+  }, [zoneIndex, speak, stopPulse]);
+
+  const handleMicPress = useCallback(async () => {
+    // ── STOP if already recording ─────────────────────────────────────────────
+    if (isRecording && recordingRef.current) {
+      // FIX (Stage 3): lock prevents double-stop from race condition
+      if (isStoppingRef.current) {
+        console.warn("[Mic] Stop already in progress — ignoring.");
+        return;
+      }
+      isStoppingRef.current = true;
+
+      console.log("[Mic] Stopping recording...");
+      if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
+
+      // FIX (Stage 3): smart wait — only delay the remaining time, not a full 2.5s
+      const elapsed = Date.now() - recordingStartTimeRef.current;
+      const remaining = Math.max(0, 2500 - elapsed);
+      if (remaining > 0) {
+        setDebugText(`Recording... (${(remaining / 1000).toFixed(1)}s remaining)`);
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+
+      try {
+        await recordingRef.current.stopAndUnloadAsync();
+        const uri = recordingRef.current.getURI();
+        recordingRef.current = null;
+        setIsRecording(false);
+        isStoppingRef.current = false;
+
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+
+        console.log("[Mic] Audio file:", uri);
+        if (uri) await transcribeAudio(uri);
+      } catch (err) {
+        console.warn("[Mic] Stop error:", err);
+        setDebugText("Failed to stop recording.");
+        setIsRecording(false);
+        isStoppingRef.current = false;
+      }
+      return;
+    }
+
+    // ── START recording ───────────────────────────────────────────────────────
+    try {
+      console.log("[Mic] Requesting permission...");
+      const { granted } = await Audio.requestPermissionsAsync();
+      console.log("[Mic] Permission granted:", granted); // FIX (Stage 1): log result
+      if (!granted) {
+        setDebugText("Microphone permission denied.");
+        console.warn("[Mic] Permission denied.");
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      console.log("[Mic] Recording start...");
+      setDebugText("Recording... speak now");
+
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      console.log("[Mic] Recording active.");
+
+      // Set state AFTER createAsync confirms recording is active
+      recordingRef.current = recording;
+      recordingStartTimeRef.current = Date.now();
+      isStoppingRef.current = false;
+      setIsRecording(true);
+
+      // Auto-stop after 7 seconds
+      recordingTimerRef.current = setTimeout(async () => {
+        if (!recordingRef.current || isStoppingRef.current) return;
+        isStoppingRef.current = true;
+        console.log("[Mic] Auto-stopping after 7s...");
+        try {
+          await recordingRef.current.stopAndUnloadAsync();
+          const uri = recordingRef.current.getURI();
+          recordingRef.current = null;
+          setIsRecording(false);
+          isStoppingRef.current = false;
+
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: false,
+            playsInSilentModeIOS: true,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false,
+          });
+
+          console.log("[Mic] Auto-stop. Audio file:", uri);
+          if (uri) await transcribeAudio(uri);
+        } catch (err) {
+          console.warn("[Mic] Auto-stop error:", err);
+          setIsRecording(false);
+          isStoppingRef.current = false;
+        }
+      }, 7000);
+    } catch (err) {
+      console.warn("[Mic] Start error:", err);
+      setDebugText("Failed to start recording.");
+      setIsRecording(false);
+    }
+  }, [isRecording, transcribeAudio]);
 
   const isActive = state === "playing" || state === "paused";
   const isPlaying = state === "playing";
@@ -429,8 +700,19 @@ export default function Guide() {
               <Text style={styles.promptText}>Where do I go next?</Text>
             </Pressable>
           </View>
-          <Pressable style={styles.micBtn} onPress={closeSheet}>
-            <Text style={styles.micIcon}>⊙</Text>
+
+          {/* DEBUG: AI flow visibility */}
+          {debugText !== "" && (
+            <Text style={styles.debugText}>{debugText}</Text>
+          )}
+
+          <Pressable
+            style={[styles.micBtn, isRecording && styles.micBtnActive]}
+            onPress={handleMicPress}
+          >
+            <Text style={[styles.micIcon, isRecording && styles.micIconActive]}>
+              {isRecording ? "⏹" : "⊙"}
+            </Text>
           </Pressable>
         </Animated.View>
       </Modal>
@@ -702,5 +984,19 @@ const styles = StyleSheet.create({
   micIcon: {
     color: TEAL,
     fontSize: 20,
+  },
+  micBtnActive: {
+    backgroundColor: "#fff0f0",
+    borderColor: "#ff4444",
+  },
+  micIconActive: {
+    color: "#ff4444",
+  },
+  debugText: {
+    fontSize: 12,
+    color: "#888",
+    marginBottom: 16,
+    lineHeight: 18,
+    fontFamily: "monospace" as any,
   },
 });

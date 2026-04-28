@@ -41,7 +41,13 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow LOCI to access your microphone to use voice input."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

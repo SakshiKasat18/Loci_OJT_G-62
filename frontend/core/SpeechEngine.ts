@@ -115,43 +115,33 @@ class SpeechEngine {
 
     // ── Gate 1: Confidence ──────────────────────────────────────────────────
     if (confidence < CONFIG.CONFIDENCE_THRESHOLD) {
-      console.log(
-        `[SpeechEngine] ⛔ Dropped — low confidence: ${confidence} (min: ${CONFIG.CONFIDENCE_THRESHOLD})`
-      );
       return;
     }
 
     // ── Gate 2: Duplicate Zone ──────────────────────────────────────────────
     if (zoneId === this.currentZone) {
-      console.log(`[SpeechEngine] ⛔ Dropped — already in zone: ${zoneId}`);
       return;
     }
 
     // ── Gate 3: Already Speaking ────────────────────────────────────────────
     if (this.isSpeaking) {
-      console.log(`[SpeechEngine] ⛔ Dropped — TTS busy (zone: ${zoneId})`);
       return;
     }
 
     // ── Gate 4: Cooldown ────────────────────────────────────────────────────
     const elapsed = Date.now() - this.lastSpokenAt;
     if (this.lastSpokenAt > 0 && elapsed < CONFIG.COOLDOWN_MS) {
-      const remaining = CONFIG.COOLDOWN_MS - elapsed;
-      console.log(
-        `[SpeechEngine] ⛔ Dropped — cooldown active (${remaining}ms remaining)`
-      );
       return;
     }
 
     // ── Gate 5: Script Lookup ───────────────────────────────────────────────
     const script = getZoneScript(zoneId);
     if (!script) {
-      console.log(`[SpeechEngine] ⛔ Dropped — no script for zone: ${zoneId}`);
+      console.warn(`[SpeechEngine] ⚠️ Script missing for zone: ${zoneId}`);
       return;
     }
 
     // ── All Gates Passed → Speak ────────────────────────────────────────────
-    console.log(`[SpeechEngine] ✅ Speaking zone: ${zoneId}`);
     this.speak(zoneId, script);
   }
 
@@ -169,7 +159,6 @@ class SpeechEngine {
       // Always release the speaking lock — even if TTS errored
       this.isSpeaking = false;
       this.currentZone = zoneId;
-      console.log(`[SpeechEngine] ✅ Completed: ${zoneId}`);
     }
   }
 
@@ -193,7 +182,6 @@ class SpeechEngine {
     this.isSpeaking = false;
     this.lastSpokenAt = 0;
     this.currentZone = null;
-    console.log("[SpeechEngine] State reset.");
   }
 }
 
