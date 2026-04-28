@@ -1,45 +1,19 @@
-
-// ===============================
-// 📍 Zone Matcher - Calibrated Version (Loci)
-// ===============================
-
-// -------- Types --------
-type AccessPoint = {
-  BSSID: string;
-  level: number;
-};
-
+type AccessPoint = { BSSID: string; level: number };
 type Scan = AccessPoint[];
+type ZoneMap = { [zoneName: string]: { [bssid: string]: number } };
 
-type ZoneMap = {
-  [zoneName: string]: {
-    [bssid: string]: number;
-  };
-};
+// -------- Tunable Params --------
+const MAX_SCAN_HISTORY = 3;
+const IGNORE_FIRST_N_SCANS = 1;
+
+const MIN_CONFIDENCE = 0.05;
+const LIVE_SCAN_BLEND = 0.7;
 
 // -------- State --------
 let scanHistory: Scan[] = [];
 let currentZone: string | null = null;
 let currentScore: number = 0;
 let scanCount: number = 0;
-
-// -------- Tunable Params --------
-const MAX_SCAN_HISTORY = 5;
-const IGNORE_FIRST_N_SCANS = 2;
-const SWITCH_THRESHOLD = 0.12;
-const DECAY_FACTOR = 0.92;
-const MIN_CONFIDENCE = 0.15;
-
-// -------- NEW: Calibration --------
-const AP_WEIGHT_OVERRIDES: Record<string, number> = {
-  'a8:ba:25:e1:ff:20': 0.05,
-  'a8:ba:25:e1:ff:21': 0.15,
-  'a8:ba:25:e1:ff:22': 0.15,
-  'a8:ba:25:e1:52:60': 0.2,
-};
-
-const LOW_EXCLUSIVITY_CAP = 0.45;
-const MISSING_AP_PENALTY = 0.05;
 
 // -------- Utility --------
 function normalizeScan(scan: Scan): Scan {
@@ -49,178 +23,163 @@ function normalizeScan(scan: Scan): Scan {
   }));
 }
 
-function getAPWeight(bssid: string): number {
-  return AP_WEIGHT_OVERRIDES[bssid] ?? 1;
+export function resetMatcher() {
+  scanHistory = [];
+  currentZone = null;
+  currentScore = 0;
+  scanCount = 0;
+
+  console.log("🧠 Matcher reset");
 }
 
-// -------- NEW: Exclusivity --------
-function countExclusiveAPs(scan: Scan, zones: ZoneMap, targetZone: string): number {
-  let count = 0;
+function weightedAverageScan(scans: Scan[]): Scan {
+  const apMap: Record<string, { total: number; weightSum: number }> = {};
 
-  for (const ap of scan) {
-    let seenIn = 0;
-    let owner: string | null = null;
+  scans.forEach((scan, idx) => {
+    const age = scans.length - 1 - idx;
+    const w = Math.pow(0.6, age);
 
-    for (const zone in zones) {
-      if (zones[zone][ap.BSSID] !== undefined) {
-        seenIn++;
-        owner = zone;
+    scan.forEach((ap) => {
+      if (!apMap[ap.BSSID]) {
+        apMap[ap.BSSID] = { total: 0, weightSum: 0 };
       }
-    }
 
-    if (seenIn === 1 && owner === targetZone) {
-      count++;
-    }
+      apMap[ap.BSSID].total += ap.level * w;
+      apMap[ap.BSSID].weightSum += w;
+    });
+  });
+
+  return Object.entries(apMap).map(([BSSID, data]) => ({
+    BSSID,
+    level: data.total / data.weightSum,
+  }));
+}
+
+function blendScans(liveScan: Scan, historyScan: Scan): Scan {
+  const apMap: Record<string, number> = {};
+
+  for (const ap of historyScan) {
+    apMap[ap.BSSID] = ap.level * (1 - LIVE_SCAN_BLEND);
   }
 
-  return count;
+  for (const ap of liveScan) {
+    apMap[ap.BSSID] =
+      (apMap[ap.BSSID] ?? ap.level * (1 - LIVE_SCAN_BLEND)) +
+      ap.level * LIVE_SCAN_BLEND;
+  }
+
+  return Object.entries(apMap).map(([BSSID, level]) => ({
+    BSSID,
+    level,
+  }));
 }
 
-// -------- Improved Scoring --------
-function scoreZone(scan: Scan, zoneFingerprint: Record<string, number>): number {
+// 🔥 SIMPLE scoring (NO weights, NO penalties)
+function scoreZone(scan: Scan, fingerprint: Record<string, number>): number {
   let score = 0;
-  let weightSum = 0;
   let matchCount = 0;
 
   for (const ap of scan) {
-    if (zoneFingerprint[ap.BSSID] !== undefined) {
-      const expected = zoneFingerprint[ap.BSSID];
-      const diff = Math.abs(ap.level - expected);
+    if (fingerprint[ap.BSSID] !== undefined) {
+      const expected = fingerprint[ap.BSSID];
+      const diff = Math.abs(expected - ap.level);
 
-      const baseScore = Math.max(0, 1 - diff / 50);
-      const weight = getAPWeight(ap.BSSID);
+      const similarity = Math.max(0, 1 - diff / 50);
 
-      score += baseScore * weight;
-      weightSum += weight;
+      score += similarity;
       matchCount++;
     }
   }
 
   if (matchCount === 0) return 0;
 
-  let finalScore = score / weightSum;
-
-  // -------- Missing AP penalty --------
-  const totalAPs = Object.keys(zoneFingerprint).length;
-  const missing = totalAPs - matchCount;
-  const missingFraction = missing / totalAPs;
-
-  const penalty = Math.min(0.5, missingFraction * missingFraction * MISSING_AP_PENALTY * 20);
-
-  finalScore = Math.max(0, finalScore - penalty);
-
-  return finalScore;
+  return score / matchCount;
 }
 
-// -------- Utility --------
-function averageScan(scans: Scan[]): Scan {
-  const apMap: Record<string, { total: number; count: number }> = {};
+function getBestZones(scan: Scan, zones: ZoneMap) {
+  const scores: Record<string, number> = {};
 
-  scans.forEach((scan) => {
-    scan.forEach((ap) => {
-      if (!apMap[ap.BSSID]) {
-        apMap[ap.BSSID] = { total: 0, count: 0 };
-      }
+  let bestZone: string | null = null;
+  let secondZone: string | null = null;
 
-      apMap[ap.BSSID].total += ap.level;
-      apMap[ap.BSSID].count += 1;
-    });
-  });
+  let bestScore = 0;
+  let secondScore = 0;
 
-  return Object.entries(apMap).map(([BSSID, data]) => ({
-    BSSID,
-    level: data.total / data.count,
-  }));
+  for (const zoneName in zones) {
+    const s = scoreZone(scan, zones[zoneName]);
+    scores[zoneName] = s;
+
+    if (s > bestScore) {
+      secondScore = bestScore;
+      secondZone = bestZone;
+
+      bestScore = s;
+      bestZone = zoneName;
+    } else if (s > secondScore) {
+      secondScore = s;
+      secondZone = zoneName;
+    }
+  }
+
+  console.log("ZONE SCORES:", scores);
+
+  return {
+    bestZone,
+    secondZone,
+    bestScore,
+    secondScore,
+  };
 }
 
 // ===============================
 // 🧠 MAIN FUNCTION
 // ===============================
-export function matchZone(scan: Scan, zones: ZoneMap): {
-  zone: string | null;
-  confidence: number;
-} {
+export function matchZone(scan: Scan, zones: ZoneMap) {
   scanCount++;
 
-  const normalizedScan = normalizeScan(scan);
+  const liveScan = normalizeScan(scan);
 
-  // -------- Ignore early scans --------
   if (scanCount <= IGNORE_FIRST_N_SCANS) {
+    scanHistory.push(liveScan);
     return { zone: null, confidence: 0 };
   }
 
   // -------- History --------
-  scanHistory.push(normalizedScan);
+  scanHistory.push(liveScan);
   if (scanHistory.length > MAX_SCAN_HISTORY) {
     scanHistory.shift();
   }
 
-  const stableScan = averageScan(scanHistory);
+  const historyScan = weightedAverageScan(scanHistory);
+  const stableScan = blendScans(liveScan, historyScan);
 
-  // -------- Score zones --------
-  let bestZone: string | null = null;
-  let bestScore = 0;
+  // -------- Get best zones --------
+  const {
+    bestZone,
+    secondZone,
+    bestScore,
+    secondScore,
+  } = getBestZones(stableScan, zones);
 
-  for (const zoneName in zones) {
-    const zoneScore = scoreZone(stableScan, zones[zoneName]);
-
-    if (zoneScore > bestScore) {
-      bestScore = zoneScore;
-      bestZone = zoneName;
-    }
-  }
-
-  // -------- Apply exclusivity --------
-  if (bestZone) {
-    const exclusiveCount = countExclusiveAPs(stableScan, zones, bestZone);
-
-    if (exclusiveCount === 0) {
-      bestScore *= LOW_EXCLUSIVITY_CAP;
-    } else if (exclusiveCount === 1) {
-      bestScore *= 0.75;
-    }
-  }
-
-  // -------- Decay --------
-  currentScore *= DECAY_FACTOR;
-
-  // -------- Switching --------
-  if (!currentZone) {
-    currentZone = bestZone;
-    currentScore = bestScore;
-  } else {
-    const shouldSwitch =
-      bestZone !== currentZone &&
-      bestScore > currentScore + SWITCH_THRESHOLD;
-
-   if (shouldSwitch) {
+  // -------- Simple selection --------
   currentZone = bestZone;
   currentScore = bestScore;
-} else {
-  if (bestZone === currentZone) {
-    // Stay in same zone → allow confidence to recover
-    currentScore = Math.max(currentScore, bestScore);
-  } else {
-    // Different zone but not strong enough → dampen
-    currentScore = Math.max(currentScore, bestScore * 0.9);
-  }
-}
-  }
 
-  // -------- Drop weak --------
+  // -------- Final cleanup --------
   if (currentScore < MIN_CONFIDENCE) {
     currentZone = null;
+    currentScore = 0;
   }
 
   console.log({
     bestZone,
-    bestScore: Number(bestScore.toFixed(3)),
-    currentZone,
-    currentScore: Number(currentScore.toFixed(3)),
+    secondZone,
+    chosen: currentZone,
+    confidence: +currentScore.toFixed(3),
   });
 
   return {
     zone: currentZone,
-    confidence: Number(currentScore.toFixed(3)),
+    confidence: +currentScore.toFixed(3),
   };
 }

@@ -3,105 +3,159 @@
   "floor": "ground",
   "version": "1.0.0",
   "collection_notes": "Collected by Manav Nayak — A3 Polaris School of Technology, Bengaluru. Each fingerprint is a 3-scan average from the zone center. Only APs with level > -75 included.",
-
   "zones": [
     {
       "zone_id": "entrance",
       "label": "Main Entrance",
-      "fingerprint": [],
-      "collected_at": null,
-      "notes": "TODO — scan from just inside main entrance door"
+      "fingerprint": {
+        "a8:ba:25:e1:42:f0": -58,
+        "a8:ba:25:e1:42:f2": -62,
+        "a8:ba:25:e1:42:e0": -64,
+        "a8:ba:25:e1:42:e1": -64,
+        "a8:ba:25:e1:ff:22": -73
+      },
+      "collected_at": "2024-04-24T15:00:00Z",
+      "notes": "Collected from just inside main entrance door"
     },
     {
       "zone_id": "reception",
       "label": "Reception",
-      "fingerprint": [],
-      "collected_at": null,
-      "notes": "TODO — scan from center of reception desk area"
+      "fingerprint": {
+        "a8:ba:25:e1:f6:40": -46,
+        "a8:ba:25:e1:f6:41": -47,
+        "a8:ba:25:e1:f6:50": -58,
+        "a8:ba:25:e1:f6:51": -59,
+        "a8:ba:25:e1:f6:52": -58,
+        "a8:ba:25:e1:ff:21": -61,
+        "a8:ba:25:e1:ff:20": -64
+      },
+      "collected_at": "2024-04-24T15:00:00Z",
+      "notes": "Collected from center of reception desk area"
     },
     {
       "zone_id": "merchandise_display",
       "label": "Merchandise Display",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from in front of display cabinets in lobby"
     },
     {
       "zone_id": "radial_classroom",
       "label": "Radial Classroom",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from center of semi-circular seating area"
     },
     {
       "zone_id": "creator_studio",
       "label": "Creator Studio",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from inside studio. Note: acoustic panels may affect signal"
     },
     {
       "zone_id": "creator_lounge",
       "label": "Creator Lounge",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from center of lounge area outside studio"
     },
     {
       "zone_id": "mentor_room",
       "label": "Mentor Room",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from inside room if accessible"
     },
     {
       "zone_id": "arcade",
       "label": "Arcade",
-      "fingerprint": [],
-      "collected_at": null,
-      "notes": "TODO — scan from center of gaming area"
+      "fingerprint": {
+        "a8:ba:25:e1:12:a0": -65,
+        "a8:ba:25:e2:2b:30": -60,
+        "a8:ba:25:e2:2b:31": -60,
+        "a8:ba:25:e2:2b:32": -60,
+        "a8:ba:25:da:d3:d0": -71,
+        "a8:ba:25:da:d3:d1": -71,
+        "a8:ba:25:da:d3:d2": -71
+      },
+      "collected_at": "2024-04-24T15:00:00Z",
+      "notes": "Collected from center of gaming area"
     },
     {
       "zone_id": "cafeteria",
       "label": "Cafeteria",
-      "fingerprint": [],
-      "collected_at": null,
-      "notes": "TODO — scan from middle of dining area"
+      "fingerprint": {
+        "a8:ba:25:e1:ff:21": -51,
+        "a8:ba:25:e1:ff:20": -54,
+        "a8:ba:25:e1:47:70": -50,
+        "a8:ba:25:e1:47:71": -50,
+        "a8:ba:25:e1:47:72": -50,
+        "a8:ba:25:e1:64:20": -49,
+        "a8:ba:25:e1:22:81": -56,
+        "a8:ba:25:e1:22:82": -53,
+        "a8:ba:25:e1:52:60": -62
+      },
+      "collected_at": "2024-04-24T15:00:00Z",
+      "notes": "Collected from middle of dining area"
     },
     {
       "zone_id": "wormhole",
       "label": "Innovation Lab (Wormhole)",
-      "fingerprint": [],
-      "collected_at": null,
-      "notes": "TODO — scan from inside the main lab space, past the entrance tunnel"
+      "fingerprint": {
+        "a8:ba:25:db:75:60": -61,
+        "a8:ba:25:db:75:61": -62,
+        "a8:ba:25:db:75:62": -65,
+        "a8:ba:25:e1:20:b0": -67,
+        "a8:ba:25:e1:20:b1": -67,
+        "a8:ba:25:e1:20:b2": -67
+      },
+      "collected_at": "2024-04-24T15:00:00Z",
+      "notes": "Collected from inside the main lab space, past the entrance tunnel"
     },
     {
       "zone_id": "utility",
       "label": "Utility Area",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from kitchen/utility area if accessible"
     },
     {
       "zone_id": "corridor_main",
       "label": "Main Corridor",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from middle of main corridor"
     },
     {
       "zone_id": "staircase",
       "label": "Staircase",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from staircase landing on ground floor"
     },
     {
       "zone_id": "lift",
       "label": "Lift",
-      "fingerprint": [],
+      "fingerprint": {},
       "collected_at": null,
       "notes": "TODO — scan from outside lift doors on ground floor"
+    },
+    {
+      "zone_id": "admin_block",
+      "label": "Admin Block",
+      "fingerprint": {
+        "a8:ba:25:e1:52:60": -49,
+        "a8:ba:25:e1:52:61": -52,
+        "a8:ba:25:e1:52:62": -52,
+        "a8:ba:25:e1:64:32": -64,
+        "a8:ba:25:e1:64:30": -68,
+        "a8:ba:25:e1:64:31": -68,
+        "a8:ba:25:da:d3:c1": -63,
+        "a8:ba:25:e2:0d:20": -72
+      },
+      "collected_at": "2024-04-24T15:00:00Z",
+      "notes": "Newly added admin zone data"
     }
   ]
 }
