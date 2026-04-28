@@ -32,6 +32,7 @@ const ZONES = [
   "merchandise_display",
   "radial_classroom",
   "admin_block",
+  "creator_zone",
   "cafeteria",
   "gaming_room",
   "innovation_lab",
@@ -56,6 +57,7 @@ export default function Guide() {
   const [debugText, setDebugText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [orchData, setOrchData] = useState<any>(null);
+  const [isThinking, setIsThinking] = useState(false);
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -202,7 +204,6 @@ export default function Guide() {
       const session = ++sessionRef.current;
 
       const zoneId = ZONES[index];
-      const segments = getZoneSegments(zoneId);
 
       setZoneIndex(index);
       setState("playing");
@@ -210,21 +211,13 @@ export default function Guide() {
       crossFadeText(getZoneStatusLine(zoneId));
       startPulse();
 
-      await wait(START_DELAY);
-      if (cancelRef.current || sessionRef.current !== session) return;
-
-      for (let i = 0; i < segments.length; i++) {
-        if (cancelRef.current || sessionRef.current !== session) return;
-        await speak(segments[i]);
-        if (cancelRef.current || sessionRef.current !== session) return;
-        if (i < segments.length - 1) await wait(SEGMENT_PAUSE);
-      }
+      // TTS is handled exclusively by SpeechEngine via EventBus (TTSController).
+      // speak() removed here to prevent double narration.
 
       if (cancelRef.current || sessionRef.current !== session) return;
 
       stopPulse();
-      
-      // AUTO-ADVANCE REMOVED: Now controlled by spatialOrchestrator events
+
       if (index >= ZONES.length - 1) {
         setState("done");
         crossFadeText("You've reached the end.");
@@ -232,16 +225,18 @@ export default function Guide() {
         crossFadeText("Waiting for next zone…");
       }
     },
-    [startPulse, stopPulse, crossFadeText, speak]
+    [startPulse, stopPulse, crossFadeText]
   );
 
   // --- Handlers ---
 
   const handleStart = useCallback(() => {
+    spatialOrchestrator.resume();
     spatialOrchestrator.manualStart();
   }, []);
 
   const handleStop = useCallback(() => {
+    spatialOrchestrator.pause();
     cancelRef.current = true;
     sessionRef.current++;
     Speech.stop();
@@ -253,14 +248,24 @@ export default function Guide() {
   const handleResume = useCallback(() => playZone(zoneIndex), [zoneIndex, playZone]);
 
   const handleReplay = useCallback(() => {
+    spatialOrchestrator.pause();
     cancelRef.current = true;
     sessionRef.current++;
     Speech.stop();
     stopPulse();
-    setTimeout(() => playZone(zoneIndex), 150);
-  }, [zoneIndex, playZone, stopPulse]);
+    // Direct narration — bypass orchestrator, reset SpeechEngine dedup+cooldown
+    const zoneId = ZONES[zoneIndex];
+    setZoneIndex(zoneIndex);
+    setState("playing");
+    crossFadeText(getZoneStatusLine(zoneId));
+    startPulse();
+    speechEngine.reset();
+    eventBus.emit({ type: "ZONE_CHANGED", zoneId, confidence: 1 });
+    setTimeout(() => stopPulse(), 8000);
+  }, [zoneIndex, stopPulse, startPulse, crossFadeText]);
 
   const handleSkip = useCallback(() => {
+    spatialOrchestrator.pause();
     cancelRef.current = true;
     sessionRef.current++;
     Speech.stop();
@@ -271,8 +276,16 @@ export default function Guide() {
       crossFadeText("You've reached the end.");
       return;
     }
-    setTimeout(() => playZone(next), 150);
-  }, [zoneIndex, playZone, stopPulse, crossFadeText]);
+    // Direct narration — bypass orchestrator, reset SpeechEngine dedup+cooldown
+    const zoneId = ZONES[next];
+    setZoneIndex(next);
+    setState("playing");
+    crossFadeText(getZoneStatusLine(zoneId));
+    startPulse();
+    speechEngine.reset();
+    eventBus.emit({ type: "ZONE_CHANGED", zoneId, confidence: 1 });
+    setTimeout(() => stopPulse(), 8000);
+  }, [zoneIndex, stopPulse, startPulse, crossFadeText]);
 
   const handleLogout = useCallback(async () => {
     cancelRef.current = true;
@@ -319,13 +332,32 @@ export default function Guide() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
-        const answer = data.answer || "I don't have that information.";
+        const rawAnswer = data.answer || "";
 
-        // ── Debug: response received
-        console.log("[Ask Loci] AI Response:", answer);
-        setDebugText(`Asked: "${question}"\nAI: "${answer}"`);
+        const isBadResponse =
+          !rawAnswer ||
+          rawAnswer.toLowerCase().includes("don't have") ||
+          rawAnswer.toLowerCase().includes("not available") ||
+          rawAnswer.trim().length < 5;
 
-        await speak(answer, { rate: 0.78 });
+        let finalAnswer = rawAnswer;
+        if (isBadResponse) {
+          const zoneName = (zoneId || "this area").replace(/_/g, " ");
+          const q = question.toLowerCase();
+          if (q.includes("next") || q.includes("go")) {
+            finalAnswer = `You can move to the next section ahead.`;
+          } else if (q.includes("where")) {
+            finalAnswer = `You're currently in the ${zoneName}.`;
+          } else if (q.includes("what")) {
+            finalAnswer = `This is the ${zoneName}.`;
+          } else {
+            finalAnswer = `You're currently near the ${zoneName}.`;
+          }
+        }
+
+        console.log("[Ask Loci] AI Response:", finalAnswer);
+
+        await speak(finalAnswer, { rate: 0.78 });
       } catch (err) {
         console.warn("[Ask Loci] Error:", err);
         setDebugText("Something went wrong.");
@@ -340,7 +372,7 @@ export default function Guide() {
   // ── Deepgram STT helper — called after every recording stop ──────────────
   const transcribeAudio = useCallback(async (uri: string) => {
     console.log("[Deepgram] Sending file:", uri);
-    setDebugText(`Sending to Deepgram...\n${uri}`);
+    setIsThinking(true);
 
     try {
       const fileRes = await fetch(uri);
@@ -421,17 +453,38 @@ export default function Guide() {
       if (!res.ok) throw new Error(`AI HTTP ${res.status}`);
 
       const data = await res.json();
-      const answer = data.answer || "I don't have that information.";
+      const rawAnswer = data.answer || "";
 
-      console.log("[Ask Loci] AI Response:", answer);
-      setDebugText(`Asked: "${transcript}"\nAI: "${answer}"`);
+      const isBadResponse =
+        !rawAnswer ||
+        rawAnswer.toLowerCase().includes("don't have") ||
+        rawAnswer.toLowerCase().includes("not available") ||
+        rawAnswer.trim().length < 5;
 
-      await speak(answer, { rate: 0.78 });
+      let finalAnswer = rawAnswer;
+      if (isBadResponse) {
+        const zoneName = (zoneId || "this area").replace(/_/g, " ");
+        const q = transcript.toLowerCase();
+        if (q.includes("next") || q.includes("go")) {
+          finalAnswer = `You can move to the next section ahead.`;
+        } else if (q.includes("where")) {
+          finalAnswer = `You're currently in the ${zoneName}.`;
+        } else if (q.includes("what")) {
+          finalAnswer = `This is the ${zoneName}.`;
+        } else {
+          finalAnswer = `You're currently near the ${zoneName}.`;
+        }
+      }
+
+      console.log("[Ask Loci] AI Response:", finalAnswer);
+
+      await speak(finalAnswer, { rate: 0.78 });
       setReplayHint(true);
     } catch (err) {
       console.warn("[Deepgram] Fetch error:", err);
-      setDebugText("Something went wrong.");
       await speak("Something went wrong.", { rate: 0.78 });
+    } finally {
+      setIsThinking(false);
     }
   }, [zoneIndex, speak, stopPulse]);
 
@@ -658,14 +711,7 @@ export default function Guide() {
             </Animated.View>
           )}
 
-          {orchData && (
-            <View style={styles.debugBox}>
-              <Text style={styles.debugText}>State: {orchData.currentState}</Text>
-              <Text style={styles.debugText}>Zone: {orchData.currentZone || "—"} ({Math.round(orchData.confidence * 100)}%)</Text>
-              <Text style={styles.debugText}>GPS: {orchData.gpsAccuracy.toFixed(1)}m | WiFi: {orchData.wifiCount}</Text>
-              <Text style={styles.debugText}>Motion: {orchData.isWalking ? "Walking" : "Still"}</Text>
-            </View>
-          )}
+
 
           {orchData?.currentState === "ASKING_ZONE" && (
             <View style={styles.promptActions}>
@@ -730,20 +776,16 @@ export default function Guide() {
           <View style={styles.sheetHandle} />
           <Text style={styles.sheetTitle}>Ask Loci</Text>
           <View style={styles.promptList}>
-            <Pressable style={styles.prompt} onPress={() => handleAskPrompt("where")}>
-              <Text style={styles.promptText}>Where am I right now?</Text>
-            </Pressable>
-            <Pressable style={styles.prompt} onPress={() => handleAskPrompt("what")}>
-              <Text style={styles.promptText}>What is this space?</Text>
-            </Pressable>
-            <Pressable style={styles.prompt} onPress={() => handleAskPrompt("next")}>
-              <Text style={styles.promptText}>Where do I go next?</Text>
-            </Pressable>
+            <Text style={styles.promptHint}>
+              You can ask things like:{"\n"}
+              {"\u2022"} Where am I right now?{"\n"}
+              {"\u2022"} What is this place?{"\n"}
+              {"\u2022"} Where should I go next?
+            </Text>
           </View>
 
-          {/* DEBUG: AI flow visibility */}
-          {debugText !== "" && (
-            <Text style={styles.debugText}>{debugText}</Text>
+          {isThinking && (
+            <Text style={styles.thinkingText}>Thinking…</Text>
           )}
 
           <Pressable
@@ -1009,6 +1051,19 @@ const styles = StyleSheet.create({
   promptText: {
     color: "#444",
     fontSize: 14,
+  },
+  promptHint: {
+    color: "#666",
+    fontSize: 14,
+    lineHeight: 26,
+    paddingHorizontal: 4,
+  },
+  thinkingText: {
+    color: TEAL,
+    fontSize: 13,
+    fontStyle: "italic",
+    textAlign: "center",
+    marginVertical: 8,
   },
   micBtn: {
     alignSelf: "center",

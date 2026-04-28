@@ -33,6 +33,7 @@ class SpatialOrchestrator {
   private confidence: number = 0;
   
   private isScanning: boolean = false;
+  private isManuallyPaused: boolean = false;
   private lastWalkingTime: number = Date.now();
   private lastStableTime: number = Date.now();
   private departureDetected: boolean = false;
@@ -60,27 +61,43 @@ class SpatialOrchestrator {
     console.log("🛑 [SpatialOrchestrator] Stopped");
   }
 
+  public pause() {
+    this.isManuallyPaused = true;
+    console.log("⏸ [SpatialOrchestrator] Manually paused.");
+  }
+
+  public resume() {
+    this.isManuallyPaused = false;
+    console.log("▶️ [SpatialOrchestrator] Resumed.");
+  }
+
   private async runLoop() {
     while (this.isScanning) {
       try {
-        // 1. Sensors
-        let loc;
+        // 1. GPS
         try {
-            // Still polling for debug info, but logic is simplified
-            loc = await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.Balanced,
-            });
-            this.gpsAccuracy = loc.coords.accuracy ?? 100;
-        } catch (locErr) {
-            this.gpsAccuracy = 100;
+          const loc = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          this.gpsAccuracy = loc.coords.accuracy ?? 100;
+        } catch {
+          this.gpsAccuracy = 100;
         }
 
-        const wifiScan = await scanWifi();
-        this.wifiCount = wifiScan.length;
-        this.avgRSSI = this.wifiCount > 0
-            ? wifiScan.reduce((s: number, a: any) => s + a.level, 0) / this.wifiCount
-            : -100;
+        // 2. WiFi (optional — gracefully absent in Expo Go)
+        try {
+          const wifiScan = await scanWifi();
+          this.wifiCount = wifiScan.length;
+          this.avgRSSI =
+            this.wifiCount > 0
+              ? wifiScan.reduce((s, a) => s + a.level, 0) / this.wifiCount
+              : -100;
+        } catch {
+          this.wifiCount = 0;
+          this.avgRSSI = -100;
+        }
 
+        // 3. Motion
         const { isMoving } = getMotion();
         if (isMoving) {
           this.lastWalkingTime = Date.now();
@@ -89,7 +106,9 @@ class SpatialOrchestrator {
         const now = Date.now();
         const isStillSpeaking = await ttsController.isSpeaking();
 
-        // 2. State Logic
+        // 2. State Logic — skipped when user is manually in control,
+        // but sensors above always run so motion/GPS data stays fresh.
+        if (!this.isManuallyPaused) {
         switch (this.currentState) {
           case "OUTDOOR":
             // Waiting for manualStart() or manual override
@@ -140,6 +159,7 @@ class SpatialOrchestrator {
             // Waiting for YES/NO
             break;
         }
+        } // end if (!this.isManuallyPaused)
       } catch (err) {
         console.error("[SpatialOrchestrator] Loop error:", err);
       }
