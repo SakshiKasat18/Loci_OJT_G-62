@@ -58,5 +58,21 @@ export const ZONES = {
     "a8:ba:25:e1:f6:52": -58,
     "a8:ba:25:e1:ff:21": -61,
     "a8:ba:25:e1:ff:20": -64
+  },
+
+  radial_classroom: {
+    // Fingerprint pending physical scan
   }
-}
+};
+
+// Adjacency graph — defines which zones the orchestrator asks about
+// after each confirmed zone. Order matters: first entry is asked first.
+export const ZONE_NEIGHBORS: Record<string, string[]> = {
+  entrance:         ["reception", "admin_block"],
+  reception:        ["radial_classroom", "admin_block", "entrance"],
+  radial_classroom: ["admin_block", "cafeteria", "innovation_lab"],
+  admin_block:      ["cafeteria", "reception", "radial_classroom", "entrance"],
+  cafeteria:        ["gaming_arcade", "admin_block", "radial_classroom"],
+  gaming_arcade:    ["cafeteria", "innovation_lab"],
+  innovation_lab:   ["radial_classroom", "gaming_arcade"],
+};

@@ -15,11 +15,15 @@
 // This is the sealed interface between the input layer and the speech engine.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type LociEvent = {
-  type: "ZONE_CHANGED";
-  zoneId: string;
-  confidence: number; // 0.0 → 1.0
-};
+export type LociEvent =
+  | {
+      type: "ZONE_CHANGED";
+      zoneId: string;
+      confidence: number; // 0.0 → 1.0
+    }
+  | {
+      type: "TOUR_FINISHED";
+    };
 
 export type EventHandler = (event: LociEvent) => void;
 

@@ -109,9 +109,10 @@ class SpeechEngine {
    *   → Speak
    */
   private handle(event: LociEvent): void {
-    const { zoneId, confidence, type } = event;
+    // Type guard FIRST — narrows union before destructuring
+    if (event.type !== "ZONE_CHANGED") return;
 
-    if (type !== "ZONE_CHANGED") return; // Only handle zone change events
+    const { zoneId, confidence } = event;
 
     // ── Gate 1: Confidence ──────────────────────────────────────────────────
     if (confidence < CONFIG.CONFIDENCE_THRESHOLD) {

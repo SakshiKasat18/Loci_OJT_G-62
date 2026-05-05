@@ -86,16 +86,17 @@ const ZONES: Record<string, ZoneData> = {
     ],
   },
 
-  gaming_room: {
-    label: "Gaming Room",
+  gaming_arcade: {
+    label: "Gaming Arcade",
     statusLine: "Unplug and play.",
     shortDesc: "A high-energy social hub for relaxation and competition.",
     segments: [
-      "This is the gaming room.",
+      "This is the gaming arcade.",
       "Professional setups, fast internet, and the best place to blow off steam after a long building session.",
-      "Remember, the best builders also know when to hit pause."
+      "Remember, the best builders also know when to hit pause.",
     ],
   },
+
 
   innovation_lab: {
     label: "Innovation Lab",

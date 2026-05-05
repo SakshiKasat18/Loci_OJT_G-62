@@ -4,44 +4,50 @@ import { scanWifi } from "./wifiScanner";
 import { eventBus } from "../core/EventBus";
 import { ttsController } from "../core/TTSController";
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
 export type OrchestratorState =
   | "OUTDOOR"
-  | "INDOOR_DETECTED"
   | "ENTRANCE_LOCKED"
   | "WAITING_FOR_STOP"
   | "ASKING_ZONE"
-  | "ZONE_CONFIRMED"
-  | "NARRATING";
+  | "NARRATING"
+  | "TOUR_FINISHED";
 
-const TOUR_SEQUENCE = [
+export const TOUR_SEQUENCE = [
   "entrance",
   "reception",
-  "merchandise_display",
   "radial_classroom",
   "admin_block",
-  "creator_zone",
   "cafeteria",
-  "gaming_room",
+  "gaming_arcade",
   "innovation_lab",
-];
+] as const;
+
+// ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 class SpatialOrchestrator {
   private currentState: OrchestratorState = "OUTDOOR";
   private currentZone: string | null = null;
-  private currentSeqIndex: number = -1;
-  private neighborAskIndex: number = 0;
+  private pendingZone: string | null = null;
+  private visitedZones: Set<string> = new Set();
   private confidence: number = 0;
-  
+
   private isScanning: boolean = false;
-  private isManuallyPaused: boolean = false;
+  private isAskingZone: boolean = false;   // concurrency guard for askNextZone()
   private lastWalkingTime: number = Date.now();
   private lastStableTime: number = Date.now();
   private departureDetected: boolean = false;
-  
-  // Debug values
+
+  // cancelId: incremented by every manual user action.
+  // Async functions capture it at start and abort if it changes mid-flight.
+  private cancelId: number = 0;
+
   private gpsAccuracy: number = 0;
   private wifiCount: number = 0;
   private avgRSSI: number = 0;
+
+  // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
   async start() {
     if (this.isScanning) return;
@@ -50,31 +56,69 @@ class SpatialOrchestrator {
     this.runLoop();
   }
 
-  public manualStart() {
-    console.log("🚀 [SpatialOrchestrator] Manual start triggered at Entrance");
-    this.currentSeqIndex = 0;
-    this.transitionToEntrance();
-  }
-
   stop() {
     this.isScanning = false;
     console.log("🛑 [SpatialOrchestrator] Stopped");
   }
 
-  public pause() {
-    this.isManuallyPaused = true;
-    console.log("⏸ [SpatialOrchestrator] Manually paused.");
+  // ─── Public Manual Controls ─────────────────────────────────────────────────
+
+  /** Start Experience / Restart Tour — always clean from entrance. */
+  public manualStart() {
+    console.log("🚀 [SpatialOrchestrator] manualStart() — clean start");
+    this.cancelId++;          // kill all pending async work
+    this.hardReset();
+    this.transitionToEntrance();
   }
 
-  public resume() {
-    this.isManuallyPaused = false;
-    console.log("▶️ [SpatialOrchestrator] Resumed.");
+  /**
+   * Called by Skip in guide.tsx.
+   * Syncs orchestrator to the zone the UI just skipped to,
+   * cancels any pending zone prompts, resets the 15s timer.
+   */
+  public skipToZone(zoneId: string) {
+    this.cancelId++;
+    this.isAskingZone = false;
+    this.currentZone = zoneId;
+    this.visitedZones.add(zoneId);
+    this.pendingZone = null;
+    this.departureDetected = false;
+    this.setState("WAITING_FOR_STOP"); // resets lastStableTime → 15s clock restarts
+    console.log(`[SpatialOrchestrator] Skipped to: ${zoneId}`);
   }
+
+  /**
+   * Called by Stop / Replay in guide.tsx.
+   * Cancels all pending async work and silences the orchestrator.
+   * Loop continues running but OUTDOOR state does nothing.
+   */
+  public cancelAll() {
+    this.cancelId++;
+    this.isAskingZone = false;
+    this.pendingZone = null;
+    this.departureDetected = false;
+    this.currentState = "OUTDOOR"; // direct assign — no setState() log noise
+    console.log("[SpatialOrchestrator] cancelAll() — system idle");
+  }
+
+  // ─── Internal Reset ─────────────────────────────────────────────────────────
+
+  private hardReset() {
+    this.visitedZones.clear();
+    this.currentZone = null;
+    this.pendingZone = null;
+    this.isAskingZone = false;
+    this.currentState = "OUTDOOR";
+    this.departureDetected = false;
+    this.confidence = 0;
+  }
+
+  // ─── Sensor Loop ────────────────────────────────────────────────────────────
 
   private async runLoop() {
     while (this.isScanning) {
       try {
-        // 1. GPS
+        // GPS
         try {
           const loc = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
@@ -84,170 +128,171 @@ class SpatialOrchestrator {
           this.gpsAccuracy = 100;
         }
 
-        // 2. WiFi (optional — gracefully absent in Expo Go)
+        // WiFi (safe — returns [] in Expo Go)
         try {
-          const wifiScan = await scanWifi();
-          this.wifiCount = wifiScan.length;
+          const wifi = await scanWifi();
+          this.wifiCount = wifi.length;
           this.avgRSSI =
             this.wifiCount > 0
-              ? wifiScan.reduce((s, a) => s + a.level, 0) / this.wifiCount
+              ? wifi.reduce((s: number, a: any) => s + a.level, 0) / this.wifiCount
               : -100;
         } catch {
           this.wifiCount = 0;
           this.avgRSSI = -100;
         }
 
-        // 3. Motion
+        // Motion
         const { isMoving } = getMotion();
-        if (isMoving) {
-          this.lastWalkingTime = Date.now();
-        }
+        if (isMoving) this.lastWalkingTime = Date.now();
 
         const now = Date.now();
-        const isStillSpeaking = await ttsController.isSpeaking();
+        const isSpeaking = await ttsController.isSpeaking();
 
-        // 2. State Logic — skipped when user is manually in control,
-        // but sensors above always run so motion/GPS data stays fresh.
-        if (!this.isManuallyPaused) {
+        // State machine
         switch (this.currentState) {
           case "OUTDOOR":
-            // Waiting for manualStart() or manual override
-            break;
+            break; // waiting for manualStart()
 
           case "ENTRANCE_LOCKED":
-            if (!isStillSpeaking) {
-                this.setState("WAITING_FOR_STOP");
-            }
+            if (!isSpeaking) this.setState("WAITING_FOR_STOP");
             break;
 
           case "WAITING_FOR_STOP":
-            // To ensure we aren't repeatedly asking while they stand still *after* just finishing an audio,
-            // we should wait until they ACTUALLY depart (start walking) and then arrive (stop walking).
-            
             if (isMoving) {
               if (!this.departureDetected) {
                 this.departureDetected = true;
-                console.log("[SpatialOrchestrator] User started walking. Departure detected.");
+                console.log("[SpatialOrchestrator] Departure detected.");
               }
             } else {
-              // They are still
-              // Did they leave and arrive somewhere else?
               if (this.departureDetected && now - this.lastWalkingTime > 3000) {
-                 this.departureDetected = false; // reset for next transition
-                 this.setState("ASKING_ZONE");
-                 this.neighborAskIndex = 0;
-                 this.askNeighbor();
-              } 
-              // Or did they just stand still the whole time post audio?
-              // The user asked: "if I don't walk at all... it asks me if I reached the next zone after a certain time"
-              else if (!this.departureDetected && now - this.lastStableTime > 15000) {
-                 console.log("[SpatialOrchestrator] User hasn't walked, suggesting next zone anyway based on estimated time.");
-                 this.setState("ASKING_ZONE");
-                 this.neighborAskIndex = 0;
-                 this.askNeighbor();
+                this.departureDetected = false;
+                this.setState("ASKING_ZONE");
+                this.askNextZone();
+              } else if (!this.departureDetected && now - this.lastStableTime > 15000) {
+                console.log("[SpatialOrchestrator] 15s timeout — prompting next zone.");
+                this.setState("ASKING_ZONE");
+                this.askNextZone();
               }
             }
             break;
 
           case "NARRATING":
-            if (!isStillSpeaking) {
-               this.setState("WAITING_FOR_STOP");
-            }
+            if (!isSpeaking) this.setState("WAITING_FOR_STOP");
             break;
 
           case "ASKING_ZONE":
-            // Waiting for YES/NO
-            break;
+            break; // waiting for handleResponse()
+
+          case "TOUR_FINISHED":
+            break; // terminal — only manualStart() exits
         }
-        } // end if (!this.isManuallyPaused)
       } catch (err) {
         console.error("[SpatialOrchestrator] Loop error:", err);
+        // Safety net: if loop errors in a non-terminal state, reset to OUTDOOR
+        if (this.currentState !== "TOUR_FINISHED") {
+          this.currentState = "OUTDOOR";
+        }
       }
 
       await new Promise((r) => setTimeout(r, 2000));
     }
   }
 
-  private async askNeighbor() {
-    // If we're at the very end, we shouldn't prompt for next. We're done.
-    if (this.currentSeqIndex >= TOUR_SEQUENCE.length - 1) {
-      return; 
-    }
+  // ─── Zone Navigation (Linear, No Graph) ─────────────────────────────────────
 
-    // Sequence of questioning:
-    // 1. Next zone
-    // 2. We haven't reached the next zone yet (Still around current/previous area)
-    const candidates = [];
-    
-    const nextIdx = this.currentSeqIndex + 1;
-    const currentIdx = this.currentSeqIndex; // Haven't arrived or walked back slightly
+  /**
+   * Asks about the next unvisited zone in TOUR_SEQUENCE order.
+   * Captured cancelId prevents stale calls from completing after Skip/Stop.
+   */
+  private async askNextZone() {
+    if (this.isAskingZone) return;
+    this.isAskingZone = true;
+    const capturedCancel = this.cancelId;
 
-    if (nextIdx < TOUR_SEQUENCE.length) candidates.push(TOUR_SEQUENCE[nextIdx]);
-    if (currentIdx >= 0) candidates.push(TOUR_SEQUENCE[currentIdx]);
-    
-    // We can add skip (next-next) if we want, but keeping it simpler per user request
-    const skipIdx = this.currentSeqIndex + 2;
-    if (skipIdx < TOUR_SEQUENCE.length) candidates.push(TOUR_SEQUENCE[skipIdx]);
+    try {
+      const nextZone = TOUR_SEQUENCE.find((z) => !this.visitedZones.has(z));
 
-    const uniqueCandidates = Array.from(new Set(candidates));
-
-    if (this.neighborAskIndex < uniqueCandidates.length) {
-      const candidate = uniqueCandidates[this.neighborAskIndex];
-      const displayName = candidate.replace(/_/g, ' ');
-      const speechText = `Are you near the ${displayName}?`;
-      
-      this.currentZone = candidate; 
-      
-      // Check if we are asking for innovation lab. If so, add extra delay because of the longer walk
-      if (candidate === 'innovation_lab') {
-        await new Promise(r => setTimeout(r, 4000)); 
+      if (!nextZone) {
+        // All zones visited
+        if (this.cancelId !== capturedCancel) return;
+        this.setState("TOUR_FINISHED");
+        eventBus.emit({ type: "TOUR_FINISHED" });
+        return;
       }
 
-      await ttsController.speak(speechText);
-    } else {
-      await ttsController.speak("I'm lost. Where are you?");
-      this.setState("WAITING_FOR_STOP");
+      this.pendingZone = nextZone;
+      const name = nextZone.replace(/_/g, " ");
+      await ttsController.speak(`Are you near the ${name}?`);
+
+      // Abort if cancelled during speak
+      if (this.cancelId !== capturedCancel) return;
+
+    } finally {
+      // Only release guard if we're still the active call
+      if (this.cancelId === capturedCancel) {
+        this.isAskingZone = false;
+      }
     }
   }
 
+  /** YES/NO response from UI buttons. */
   public handleResponse(yes: boolean) {
     if (this.currentState !== "ASKING_ZONE") return;
 
     if (yes) {
       this.confidence = 1;
-      this.currentSeqIndex = TOUR_SEQUENCE.indexOf(this.currentZone!);
+      this.currentZone = this.pendingZone;
+      this.pendingZone = null;
       this.triggerNarration();
     } else {
-      this.neighborAskIndex++;
-      this.askNeighbor();
+      // User is NOT at pendingZone — mark it visited to skip it in sequence
+      if (this.pendingZone) {
+        this.visitedZones.add(this.pendingZone);
+        this.pendingZone = null;
+      }
+      // Backdate lastStableTime so the NEXT loop cycle (2s) fires immediately
+      // This avoids a 15s awkward silence after NO
+      this.setState("WAITING_FOR_STOP");
+      this.lastStableTime = Date.now() - 16000; // instant re-trigger
     }
   }
 
+  // ─── Zone Transitions ────────────────────────────────────────────────────────
+
   private transitionToEntrance() {
     this.currentZone = "entrance";
+    this.visitedZones.add("entrance");
     this.confidence = 0.8;
     this.setState("ENTRANCE_LOCKED");
-    
-    eventBus.emit({
-      type: "ZONE_CHANGED",
-      zoneId: "entrance",
-      confidence: 0.8,
-    });
+    eventBus.emit({ type: "ZONE_CHANGED", zoneId: "entrance", confidence: 0.8 });
   }
 
-  private triggerNarration() {
-    if (!this.currentZone) return;
+  private triggerNarration(zoneId?: string) {
+    const target = zoneId ?? this.currentZone;
+    if (!target) return;
+
+    this.visitedZones.add(target);
     this.setState("NARRATING");
-    eventBus.emit({
-      type: "ZONE_CHANGED",
-      zoneId: this.currentZone,
-      confidence: 1,
-    });
+    eventBus.emit({ type: "ZONE_CHANGED", zoneId: target, confidence: 1 });
+
+    // Tour complete check — cancelId-guarded so restart can't be poisoned
+    const remaining = TOUR_SEQUENCE.filter((z) => !this.visitedZones.has(z));
+    if (remaining.length === 0) {
+      const captured = this.cancelId;
+      setTimeout(() => {
+        if (this.cancelId !== captured) return; // user restarted — abort
+        console.log("🎉 [SpatialOrchestrator] Tour complete!");
+        this.setState("TOUR_FINISHED");
+        eventBus.emit({ type: "TOUR_FINISHED" });
+      }, 500);
+    }
   }
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────────
 
   private setState(state: OrchestratorState) {
     if (this.currentState === state) return;
-    console.log(`[SpatialOrchestrator] State Change: ${this.currentState} -> ${state}`);
+    console.log(`[SpatialOrchestrator] ${this.currentState} → ${state}`);
     this.currentState = state;
     this.lastStableTime = Date.now();
   }
@@ -261,7 +306,8 @@ class SpatialOrchestrator {
       wifiCount: this.wifiCount,
       avgRSSI: this.avgRSSI,
       isWalking: getMotion().isMoving,
-      lastStableTime: this.lastStableTime
+      lastStableTime: this.lastStableTime,
+      visitedZones: Array.from(this.visitedZones),
     };
   }
 }
