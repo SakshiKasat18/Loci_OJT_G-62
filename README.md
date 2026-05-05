@@ -1,148 +1,137 @@
-# Loci
+# LOCI — Audio-First Spatial Guidance System
 
-**Loci is an audio-first indoor spatial guidance system for structured environments.**
-It combines deterministic routing, environmental validation, and bounded AI to deliver calm, context-aware guidance without requiring continuous screen interaction.
-
-Designed for structured indoor environments such as corporate campuses, tech parks, museums, and institutional buildings.
+A deterministic, audio-first indoor guidance system designed for reliable navigation in uncertain environments.
 
 ---
 
-## Overview
+## Problem
 
-Indoor environments are structured by design, but most navigation systems treat them as approximate maps.
+Visitors navigating unfamiliar indoor spaces rely on static signage or printed maps that require active attention and offer no contextual awareness. First-time visitors to a campus frequently lose orientation, miss key spaces, and have no way to ask questions about what they are seeing.
 
-Loci approaches the problem differently.
+## Solution
 
-It models space deterministically, validates environmental confidence before speaking, and restricts AI strictly to language tasks.
+LOCI guides visitors through a campus using spatial audio narration and voice-based Q&A. The system detects where the user is, narrates each zone, and responds to spoken questions — all without requiring the user to look at a screen.
 
-The guiding principle:
-
-> Speak only when confident. Stay silent when unsure.
+Navigation is controlled by a finite state machine. Audio is the primary interface. AI is used only for natural language understanding, never for navigation decisions.
 
 ---
 
-## Core Principles
+## Design Principles
 
-* Audio-first interaction
-* Minimal screen dependency
-* Silence > incorrect information
-* Deterministic routing over probabilistic guessing
-* Confidence-gated narration
-* Strict separation between spatial logic and AI
+**Silence over incorrect output.**
+The system will not speak unless it has verified content for the current zone. Uncertain or missing data produces silence, not hallucination.
 
----
+**Deterministic navigation.**
+Zone transitions follow a fixed sequence. The orchestrator does not use probabilistic inference for routing decisions.
 
-## Architecture
-
-Loci is structured into three independent layers to ensure predictability, stability, and scalability.
-
-### 1. Deterministic Spatial Layer
-
-Responsible for modeling the environment and computing routes.
-
-* Graph-based indoor modeling
-* Nodes: corridors, junctions, lifts, stairs
-* Edges: walkable connections
-* A* pathfinding algorithm
-
-This layer:
-
-* Computes shortest paths
-* Does not rely on AI
-* Is independent of signal fluctuations
+**Bounded AI.**
+The language model is scoped to a zone-specific knowledge base. It cannot affect the navigation state. It answers questions; it does not direct movement.
 
 ---
 
-### 2. Confidence Layer
-
-Acts as a permission system between environmental signals and user-facing audio.
-
-Inputs:
-
-* WiFi anchor similarity
-* Route expectation checks
-* Stickiness logic to prevent jitter
-
-Outputs:
-
-* LOW → silence
-* MED → silence
-* HIGH → allow narration
-
-This layer prevents incorrect triggers and maintains calm user experience.
-
----
-
-### 3. AI Language Layer (Bounded)
-
-Responsible only for language tasks.
-
-* Intent extraction (e.g., navigation commands)
-* Natural narration phrasing
-* Retrieval-based Q&A using approved knowledge capsules
-
-AI:
-
-* Does not compute routes
-* Does not estimate location
-* Does not modify confidence state
-* Operates strictly within defined boundaries
-
----
-
-## Repository Structure
+## Architecture Overview
 
 ```
-loci/
-  frontend/     # Mobile application (React Native / Expo)
-  backend/      # API server + AI orchestration
-  docs/         # System design documentation
+Mobile App (React Native / Expo)
+    |
+    |-- SpatialOrchestrator (FSM)
+    |       |-- Sensor loop (GPS, IMU)
+    |       |-- State machine (OUTDOOR → NARRATING → TOUR_FINISHED)
+    |
+    |-- EventBus (pub-sub)
+    |       |-- ZONE_CHANGED
+    |       |-- TOUR_FINISHED
+    |
+    |-- SpeechEngine (5-gate TTS pipeline)
+    |       |-- Confidence gate
+    |       |-- Deduplication gate
+    |       |-- Busy gate
+    |       |-- Cooldown gate
+    |       |-- Content gate
+    |
+    |-- Voice Q&A
+            |-- Deepgram (STT)
+            |-- Backend API (Node.js / Express)
+            |-- Groq LLM (zone-scoped)
+
+Backend (Node.js)
+    |-- /ai/qa     — zone-scoped Q&A
+    |-- /ai/intent — intent classification
+    |-- PostgreSQL (Neon) — auth, logs
 ```
 
----
-
-## Backend Responsibilities
-
-* Versioned location pack distribution
-* Controlled AI orchestration API
-* PostgreSQL database for pack metadata and audit logs
+AI is strictly limited to language understanding and cannot influence navigation decisions.
 
 ---
 
-## Frontend Responsibilities
+## Demo Flow
 
-* Offline pack loading
-* Deterministic routing engine
-* Confidence state machine
-* Audio playback management
-* Voice-first interaction
+1. User opens the app and logs in.
+2. Tap **Start Experience** — entrance narration plays.
+3. System waits for movement, then asks zone confirmation via YES/NO.
+4. User confirms zone — narration plays for that zone.
+5. User taps **Ask Loci** and speaks a question — AI responds via TTS.
+6. User taps **Skip** to advance, **Replay** to repeat, **Stop** to pause.
+7. Tour ends when all zones are visited.
 
 ---
 
 ## Tech Stack
 
-* Frontend: React Native (Expo)
-* Backend: Node.js + Express
-* Database: PostgreSQL
-* AI: LLM via controlled API layer
+| Layer | Technology |
+|-------|------------|
+| Mobile | React Native (Expo) |
+| Language | TypeScript |
+| Navigation | Custom FSM (SpatialOrchestrator) |
+| Communication | EventBus (pub-sub) |
+| TTS | expo-speech |
+| STT | Deepgram nova-2 |
+| Audio recording | expo-av |
+| Motion detection | expo-sensors (accelerometer) |
+| Backend | Node.js, Express |
+| AI | Groq (llama-3) |
+| Database | PostgreSQL (Neon) |
+| Auth | JWT, bcrypt |
+| Tunneling | ngrok |
 
 ---
 
-## Current Status
+## Setup
 
-* Backend architecture initialized
-* Database schema implemented
-* API scaffolding in progress
-* Frontend routing engine under development
+### Prerequisites
+
+- Node.js 18+
+- Expo Go (Android or iOS)
+- ngrok account
+
+### Backend
+
+```bash
+cd backend
+npm install
+cp .env.example .env      # fill in GROQ_API_KEY, DATABASE_URL, JWT_SECRET
+npm run dev
+```
+
+### Tunnel
+
+```bash
+ngrok http 8080
+# copy the https URL into frontend/constants/api.ts → API_BASE_URL
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npx expo start
+# scan QR code in Expo Go
+```
 
 ---
 
-## Design Philosophy
+## Team
 
-Loci is built with strict separation of concerns:
-
-* Spatial logic is deterministic
-* Environmental validation is independent
-* AI is bounded and controlled
-
-This ensures reliability, predictability, and scalability across structured indoor deployments.
+Sakshi Kasat  
+Manav Nayak
