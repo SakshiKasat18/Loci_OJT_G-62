@@ -1,7 +1,8 @@
 import Constants from "expo-constants";
 
 function getApiBaseUrl(): string {
-  // Hardcoded for reliable APK testing via ngrok
+  // NOTE: Update this URL before APK build if using ngrok.
+  // Ngrok URLs change on restart. Use a stable backend for production.
   return "https://natantly-oaten-emerald.ngrok-free.dev";
 }
 

@@ -29,12 +29,10 @@ import { eventBus } from "../core/EventBus";
 const ZONES = [
   "entrance",
   "reception",
-  "merchandise_display",
   "radial_classroom",
   "admin_block",
-  "creator_zone",
   "cafeteria",
-  "gaming_room",
+  "gaming_arcade",
   "innovation_lab",
 ] as const;
 
@@ -231,16 +229,16 @@ export default function Guide() {
   // --- Handlers ---
 
   const handleStart = useCallback(() => {
-    spatialOrchestrator.resume();
     spatialOrchestrator.manualStart();
   }, []);
 
+
   const handleStop = useCallback(() => {
-    spatialOrchestrator.pause();
     cancelRef.current = true;
     sessionRef.current++;
     Speech.stop();
     stopPulse();
+    spatialOrchestrator.cancelAll();   // kills pending zone prompts
     setState("paused");
     crossFadeText("Paused.");
   }, [stopPulse, crossFadeText]);
@@ -248,41 +246,40 @@ export default function Guide() {
   const handleResume = useCallback(() => playZone(zoneIndex), [zoneIndex, playZone]);
 
   const handleReplay = useCallback(() => {
-    spatialOrchestrator.pause();
     cancelRef.current = true;
     sessionRef.current++;
     Speech.stop();
     stopPulse();
-    // Direct narration — bypass orchestrator, reset SpeechEngine dedup+cooldown
     const zoneId = ZONES[zoneIndex];
     setZoneIndex(zoneIndex);
     setState("playing");
     crossFadeText(getZoneStatusLine(zoneId));
     startPulse();
     speechEngine.reset();
+    spatialOrchestrator.skipToZone(zoneId); // re-center orchestrator, reset 15s clock
     eventBus.emit({ type: "ZONE_CHANGED", zoneId, confidence: 1 });
     setTimeout(() => stopPulse(), 8000);
   }, [zoneIndex, stopPulse, startPulse, crossFadeText]);
 
   const handleSkip = useCallback(() => {
-    spatialOrchestrator.pause();
     cancelRef.current = true;
     sessionRef.current++;
     Speech.stop();
     stopPulse();
     const next = zoneIndex + 1;
     if (next >= ZONES.length) {
+      spatialOrchestrator.cancelAll();
       setState("done");
       crossFadeText("You've reached the end.");
       return;
     }
-    // Direct narration — bypass orchestrator, reset SpeechEngine dedup+cooldown
     const zoneId = ZONES[next];
     setZoneIndex(next);
     setState("playing");
     crossFadeText(getZoneStatusLine(zoneId));
     startPulse();
     speechEngine.reset();
+    spatialOrchestrator.skipToZone(zoneId); // sync orchestrator to skipped zone
     eventBus.emit({ type: "ZONE_CHANGED", zoneId, confidence: 1 });
     setTimeout(() => stopPulse(), 8000);
   }, [zoneIndex, stopPulse, startPulse, crossFadeText]);
@@ -615,6 +612,7 @@ export default function Guide() {
   useEffect(() => {
     startIMU();
     speechEngine.init();
+
     spatialOrchestrator.start();
 
     const unsubscribe = eventBus.subscribe((event) => {
@@ -627,6 +625,11 @@ export default function Guide() {
           startPulse();
           setTimeout(() => stopPulse(), 8000);
         }
+      }
+      if (event.type === "TOUR_FINISHED") {
+        setState("done");
+        crossFadeText("The tour has ended.");
+        stopPulse();
       }
     });
 
