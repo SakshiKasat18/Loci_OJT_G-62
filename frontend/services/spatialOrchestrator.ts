@@ -68,38 +68,9 @@ class SpatialOrchestrator {
 
   /** Start Experience / Resume Tour. */
   public async manualStart() {
-    console.log("🚀 [SpatialOrchestrator] manualStart() — checking for saved progress");
+    console.log("🚀 [SpatialOrchestrator] manualStart() — clean start");
     this.cancelId++;          // kill all pending async work
-    
-    // If we're already in DONE state, a manual start means a RESTART
-    if (this.currentState === "TOUR_FINISHED") {
-      console.log("🔄 [SpatialOrchestrator] Tour was finished. Restarting fresh.");
-      await this.clearProgress();
-      this.hardReset();
-      this.transitionToEntrance();
-      return;
-    }
-
-    try {
-      const saved = await AsyncStorage.getItem("loci_tour_progress");
-      if (saved) {
-        const { currentZone, visitedZones } = JSON.parse(saved);
-        this.currentZone = currentZone;
-        this.visitedZones = new Set(visitedZones);
-        console.log("♻️ [SpatialOrchestrator] Resuming from:", currentZone);
-        
-        // Sync UI
-        if (currentZone) {
-          eventBus.emit({ type: "ZONE_CHANGED", zoneId: currentZone, confidence: 1 });
-        }
-        
-        this.setState("WAITING_FOR_STOP");
-        return;
-      }
-    } catch (err) {
-      console.warn("[SpatialOrchestrator] Failed to load progress:", err);
-    }
-
+    await this.clearProgress(); // Always clear progress on manual start
     this.hardReset();
     this.transitionToEntrance();
   }
@@ -280,7 +251,10 @@ class SpatialOrchestrator {
         // Start at entrance if nothing visited
         const startZone = "entrance";
         this.pendingZone = startZone;
+        
+        if (this.cancelId !== capturedCancel) return;
         await ttsController.speak(`Are you near the ${startZone.replace(/_/g, ' ')}?`);
+        if (this.cancelId !== capturedCancel) return;
         return;
       }
 
@@ -288,7 +262,10 @@ class SpatialOrchestrator {
       if (remaining.length === 1 && remaining[0] !== this.currentZone) {
         const lastZone = remaining[0];
         this.pendingZone = lastZone;
+        
+        if (this.cancelId !== capturedCancel) return;
         await ttsController.speak(`The last destination is the ${lastZone.replace(/_/g, ' ')}. Are you near it?`);
+        if (this.cancelId !== capturedCancel) return;
         return;
       }
 
@@ -304,16 +281,23 @@ class SpatialOrchestrator {
           await new Promise(r => setTimeout(r, 2000)); 
         }
 
+        if (this.cancelId !== capturedCancel) return;
         await ttsController.speak(`Are you heading towards the ${displayName}?`);
+        if (this.cancelId !== capturedCancel) return;
       } else {
         // Exhausted neighbors
         if (this.neighborAskIndex === neighbors.length) {
           const displayName = this.currentZone.replace(/_/g, ' ');
           this.pendingZone = this.currentZone;
+          
+          if (this.cancelId !== capturedCancel) return;
           await ttsController.speak(`Are you still near the ${displayName}?`);
+          if (this.cancelId !== capturedCancel) return;
         } else {
           // Fallback
+          if (this.cancelId !== capturedCancel) return;
           await ttsController.speak("It seems we're taking the scenic route.");
+          if (this.cancelId !== capturedCancel) return;
           this.triggerNarration("polaris");
         }
       }
