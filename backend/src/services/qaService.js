@@ -76,7 +76,8 @@ async function answerQuestion(question, packId, zone) {
     .map((e) => `[${e.topic}]: ${e.content}`)
     .join("\n");
 
-  const userMessage = `Question: ${question}\n\nContext:\n${context}`;
+  const zoneInfo = zone ? `[Current Location]: You are currently in the ${zone.replace(/_/g, " ")}.` : "";
+  const userMessage = `Question: ${question}\n\nContext:\n${zoneInfo}\n${context}`;
 
   let raw = "{}";
   try {

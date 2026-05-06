@@ -99,7 +99,7 @@
         "game zone",
         "air hockey"
       ],
-      "zone_id": "arcade",
+      "zone_id": "gaming_arcade",
       "content": "The Arcade is a deliberate design decision. After long hours of coding and focused academic work, students need a space to completely switch off. This area has modern arcade setups alongside nostalgic 90s-style games, air hockey, and basketball — neon-lit and intentionally different in energy from everything else on this floor. The goal is mental reset through play. High performance in technology is supported by spaces that let you step away from screens, move your body, and reconnect with others informally.",
       "short": "The Arcade is a neon-lit game zone designed for mental reset after intense academic sessions.",
       "experience_script": "Welcome to the Arcade. This space exists for one reason: after hours of deep work and problem-solving, your brain needs to completely switch gears. Neon lights, classic arcade games, air hockey, basketball. No screens, no code — just play. This is not wasted time. This is how high performers recharge."
@@ -130,7 +130,7 @@
         "build space",
         "maker space"
       ],
-      "zone_id": "wormhole",
+      "zone_id": "innovation_lab",
       "content": "The Innovation Lab is called the Wormhole — inspired by Einstein's theory of relativity and the concept of a tunnel through space-time that accelerates movement between two points. As you walk through the entrance tunnel, the light and spatial design are meant to create a mental shift: you are leaving the regular world and entering a space dedicated entirely to building, experimentation, and accelerated learning. The wormhole, famously visualised in the film Interstellar as a three-dimensional sphere, became the conceptual model for this transition experience.",
       "short": "The Wormhole is the Innovation Lab — walking in is designed to feel like a mental shift into building mode.",
       "experience_script": "You are about to enter the Wormhole — Polaris's Innovation Lab. The entrance tunnel is intentional. In physics, a wormhole is a shortcut through space-time — a passage that accelerates you from one point to another faster than normal. Here, the metaphor is real. Walking through this tunnel is meant to trigger a mental shift: you are leaving passive learning behind and entering a space designed entirely for active building, experimentation, and discovery."

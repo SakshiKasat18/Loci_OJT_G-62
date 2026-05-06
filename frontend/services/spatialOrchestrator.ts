@@ -3,6 +3,8 @@ import { getMotion } from "./imuTracker";
 import { scanWifi } from "./wifiScanner";
 import { eventBus } from "../core/EventBus";
 import { ttsController } from "../core/TTSController";
+import { ZONE_NEIGHBORS } from "../data/zones";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -30,6 +32,7 @@ class SpatialOrchestrator {
   private currentState: OrchestratorState = "OUTDOOR";
   private currentZone: string | null = null;
   private pendingZone: string | null = null;
+  private neighborAskIndex: number = 0;
   private visitedZones: Set<string> = new Set();
   private confidence: number = 0;
 
@@ -63,12 +66,60 @@ class SpatialOrchestrator {
 
   // ─── Public Manual Controls ─────────────────────────────────────────────────
 
-  /** Start Experience / Restart Tour — always clean from entrance. */
-  public manualStart() {
-    console.log("🚀 [SpatialOrchestrator] manualStart() — clean start");
+  /** Start Experience / Resume Tour. */
+  public async manualStart() {
+    console.log("🚀 [SpatialOrchestrator] manualStart() — checking for saved progress");
     this.cancelId++;          // kill all pending async work
+    
+    // If we're already in DONE state, a manual start means a RESTART
+    if (this.currentState === "TOUR_FINISHED") {
+      console.log("🔄 [SpatialOrchestrator] Tour was finished. Restarting fresh.");
+      await this.clearProgress();
+      this.hardReset();
+      this.transitionToEntrance();
+      return;
+    }
+
+    try {
+      const saved = await AsyncStorage.getItem("loci_tour_progress");
+      if (saved) {
+        const { currentZone, visitedZones } = JSON.parse(saved);
+        this.currentZone = currentZone;
+        this.visitedZones = new Set(visitedZones);
+        console.log("♻️ [SpatialOrchestrator] Resuming from:", currentZone);
+        
+        // Sync UI
+        if (currentZone) {
+          eventBus.emit({ type: "ZONE_CHANGED", zoneId: currentZone, confidence: 1 });
+        }
+        
+        this.setState("WAITING_FOR_STOP");
+        return;
+      }
+    } catch (err) {
+      console.warn("[SpatialOrchestrator] Failed to load progress:", err);
+    }
+
     this.hardReset();
     this.transitionToEntrance();
+  }
+
+  private async saveProgress() {
+    try {
+      const data = {
+        currentZone: this.currentZone,
+        visitedZones: Array.from(this.visitedZones),
+      };
+      await AsyncStorage.setItem("loci_tour_progress", JSON.stringify(data));
+    } catch (err) {
+      console.warn("[SpatialOrchestrator] Failed to save progress:", err);
+    }
+  }
+
+  public async clearProgress() {
+    await AsyncStorage.removeItem("loci_tour_progress");
+    this.visitedZones.clear();
+    this.currentZone = null;
   }
 
   /**
@@ -83,8 +134,14 @@ class SpatialOrchestrator {
     this.visitedZones.add(zoneId);
     this.pendingZone = null;
     this.departureDetected = false;
-    this.setState("WAITING_FOR_STOP"); // resets lastStableTime → 15s clock restarts
+    
     console.log(`[SpatialOrchestrator] Skipped to: ${zoneId}`);
+    
+    // Check if skipping to this zone finishes the tour
+    const isFinished = this.checkCompletion();
+    if (!isFinished) {
+      this.setState("WAITING_FOR_STOP"); // resets lastStableTime → 15s clock restarts
+    }
   }
 
   /**
@@ -167,11 +224,13 @@ class SpatialOrchestrator {
               if (this.departureDetected && now - this.lastWalkingTime > 3000) {
                 this.departureDetected = false;
                 this.setState("ASKING_ZONE");
-                this.askNextZone();
+                this.neighborAskIndex = 0;
+                this.askNeighbor();
               } else if (!this.departureDetected && now - this.lastStableTime > 15000) {
                 console.log("[SpatialOrchestrator] 15s timeout — prompting next zone.");
                 this.setState("ASKING_ZONE");
-                this.askNextZone();
+                this.neighborAskIndex = 0;
+                this.askNeighbor();
               }
             }
             break;
@@ -201,34 +260,64 @@ class SpatialOrchestrator {
   // ─── Zone Navigation (Linear, No Graph) ─────────────────────────────────────
 
   /**
-   * Asks about the next unvisited zone in TOUR_SEQUENCE order.
-   * Captured cancelId prevents stale calls from completing after Skip/Stop.
+   * Asks about a neighbor of the current zone.
    */
-  private async askNextZone() {
+  private async askNeighbor() {
     if (this.isAskingZone) return;
     this.isAskingZone = true;
     const capturedCancel = this.cancelId;
 
     try {
-      const nextZone = TOUR_SEQUENCE.find((z) => !this.visitedZones.has(z));
-
-      if (!nextZone) {
-        // All zones visited
-        if (this.cancelId !== capturedCancel) return;
-        this.setState("TOUR_FINISHED");
-        eventBus.emit({ type: "TOUR_FINISHED" });
+      const remaining = TOUR_SEQUENCE.filter(z => !this.visitedZones.has(z));
+      
+      // If no zones left, don't ask about neighbors or anything else. Just finish.
+      if (remaining.length === 0 && this.visitedZones.size > 0) {
+        this.checkCompletion();
+        return;
+      }
+      
+      if (!this.currentZone) {
+        // Start at entrance if nothing visited
+        const startZone = "entrance";
+        this.pendingZone = startZone;
+        await ttsController.speak(`Are you near the ${startZone.replace(/_/g, ' ')}?`);
         return;
       }
 
-      this.pendingZone = nextZone;
-      const name = nextZone.replace(/_/g, " ");
-      await ttsController.speak(`Are you near the ${name}?`);
+      // Special case: Only one destination left
+      if (remaining.length === 1 && remaining[0] !== this.currentZone) {
+        const lastZone = remaining[0];
+        this.pendingZone = lastZone;
+        await ttsController.speak(`The last destination is the ${lastZone.replace(/_/g, ' ')}. Are you near it?`);
+        return;
+      }
 
-      // Abort if cancelled during speak
-      if (this.cancelId !== capturedCancel) return;
+      const neighbors = ZONE_NEIGHBORS[this.currentZone] || [];
+      
+      if (this.neighborAskIndex < neighbors.length) {
+        const candidate = neighbors[this.neighborAskIndex];
+        const displayName = candidate.replace(/_/g, ' ');
+        this.pendingZone = candidate; 
+        
+        // Innovation Lab (Wormhole) specific delay
+        if (candidate === 'innovation_lab') {
+          await new Promise(r => setTimeout(r, 2000)); 
+        }
 
+        await ttsController.speak(`Are you heading towards the ${displayName}?`);
+      } else {
+        // Exhausted neighbors
+        if (this.neighborAskIndex === neighbors.length) {
+          const displayName = this.currentZone.replace(/_/g, ' ');
+          this.pendingZone = this.currentZone;
+          await ttsController.speak(`Are you still near the ${displayName}?`);
+        } else {
+          // Fallback
+          await ttsController.speak("It seems we're taking the scenic route.");
+          this.triggerNarration("polaris");
+        }
+      }
     } finally {
-      // Only release guard if we're still the active call
       if (this.cancelId === capturedCancel) {
         this.isAskingZone = false;
       }
@@ -245,15 +334,8 @@ class SpatialOrchestrator {
       this.pendingZone = null;
       this.triggerNarration();
     } else {
-      // User is NOT at pendingZone — mark it visited to skip it in sequence
-      if (this.pendingZone) {
-        this.visitedZones.add(this.pendingZone);
-        this.pendingZone = null;
-      }
-      // Backdate lastStableTime so the NEXT loop cycle (2s) fires immediately
-      // This avoids a 15s awkward silence after NO
-      this.setState("WAITING_FOR_STOP");
-      this.lastStableTime = Date.now() - 16000; // instant re-trigger
+      this.neighborAskIndex++;
+      this.askNeighbor();
     }
   }
 
@@ -272,20 +354,27 @@ class SpatialOrchestrator {
     if (!target) return;
 
     this.visitedZones.add(target);
+    this.saveProgress(); // persistence
     this.setState("NARRATING");
     eventBus.emit({ type: "ZONE_CHANGED", zoneId: target, confidence: 1 });
 
-    // Tour complete check — cancelId-guarded so restart can't be poisoned
+    this.checkCompletion();
+  }
+
+  /** Checks if all zones are visited and handles transition to TOUR_FINISHED. */
+  private checkCompletion(): boolean {
     const remaining = TOUR_SEQUENCE.filter((z) => !this.visitedZones.has(z));
-    if (remaining.length === 0) {
+    if (remaining.length === 0 && this.visitedZones.size > 0) {
       const captured = this.cancelId;
-      setTimeout(() => {
-        if (this.cancelId !== captured) return; // user restarted — abort
+      setTimeout(async () => {
+        if (this.cancelId !== captured) return; 
         console.log("🎉 [SpatialOrchestrator] Tour complete!");
         this.setState("TOUR_FINISHED");
         eventBus.emit({ type: "TOUR_FINISHED" });
       }, 500);
+      return true;
     }
+    return false;
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────

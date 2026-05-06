@@ -6,6 +6,13 @@ type ZoneData = {
 };
 
 const ZONES: Record<string, ZoneData> = {
+  entrance: {
+    label: "Entrance",
+    statusLine: "You're at the entrance.",
+    shortDesc: "The threshold of the LOCI experience.",
+    segments: ["You're at the entrance."],
+  },
+
   reception: {
     label: "Reception",
     statusLine: "This is where everything begins.",
@@ -14,24 +21,6 @@ const ZONES: Record<string, ZoneData> = {
       "This is usually the first thing you see when you walk in.",
       "That circular installation above you is inspired by long-exposure star trail photographs. Every star tracing a perfect orbit around one fixed point — Polaris.",
       "The campus takes its name from it. The idea of a fixed point. Something to return to.",
-    ],
-  },
-
-  entrance: {
-    label: "Entrance",
-    statusLine: "You're at the entrance.",
-    shortDesc: "The threshold of the LOCI experience.",
-    segments: ["You're at the entrance."],
-  },
-
-  merchandise_display: {
-    label: "Merchandise Display",
-    statusLine: "The campus keeps its memories here.",
-    shortDesc: "A living archive of campus milestones and real student moments.",
-    segments: [
-      "Each item here is from a real moment.",
-      "A hackathon t-shirt. A badge from a company visit. A bottle from a Microsoft event.",
-      "It's not a trophy cabinet. It's the campus memory — and it adds something new every year.",
     ],
   },
 
@@ -54,17 +43,6 @@ const ZONES: Record<string, ZoneData> = {
     segments: ["This is the admin block where all campus operations are managed."],
   },
 
-  creator_zone: {
-    label: "Creator Zone",
-    statusLine: "Ideas start here before they get made.",
-    shortDesc: "A professional studio and ideation lounge for building in public.",
-    segments: [
-      "Through that door is the studio — acoustically treated, professionally lit.",
-      "Out here in the lounge is where most ideas start before they ever get recorded.",
-      "The philosophy is simple: if you want to build in public, this campus won't let tools or space be the reason you don't.",
-    ],
-  },
-
   cafeteria: {
     label: "Cafeteria",
     statusLine: "Built for you to actually slow down.",
@@ -72,17 +50,6 @@ const ZONES: Record<string, ZoneData> = {
     segments: [
       "Yellow light. Warm tables. This space was designed to slow you down.",
       "It is not a canteen. The goal is for you to actually eat, sit for a while, and come back ready.",
-    ],
-  },
-
-  wormhole: {
-    label: "Wormhole",
-    statusLine: "This passage marks the shift.",
-    shortDesc: "A passage designed to shift you from learning mode to building mode.",
-    segments: [
-      "In physics, a wormhole is a shortcut through space-time.",
-      "Walking through this tunnel is designed to trigger exactly that kind of shift.",
-      "You're leaving passive learning behind. What's ahead is built entirely for doing.",
     ],
   },
 
@@ -97,7 +64,6 @@ const ZONES: Record<string, ZoneData> = {
     ],
   },
 
-
   innovation_lab: {
     label: "Innovation Lab",
     statusLine: "The future is built here.",
@@ -106,6 +72,17 @@ const ZONES: Record<string, ZoneData> = {
       "You've reached the Innovation Lab — the absolute edge of campus.",
       "This is where hardware and software collide. Prototyping, soldering, 3D printing — it all happens right here.",
       "You have come to the end of the tour. Feel free to explore!"
+    ],
+  },
+  
+  polaris: {
+    label: "Polaris Campus",
+    statusLine: "Taking the scenic route.",
+    shortDesc: "A constant reference point in your technology journey.",
+    segments: [
+      "Polaris is designed to be your North Star. A constant reference point as you navigate the ever-changing world of technology.",
+      "The architecture and spaces you see around you are all built to foster collaboration, experimentation, and deep work.",
+      "Whether you're in a classroom or the arcade, every inch of this campus is meant to support your growth as a builder.",
     ],
   },
 };
