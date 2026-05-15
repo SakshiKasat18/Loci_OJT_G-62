@@ -41,14 +41,30 @@ class SpatialOrchestrator {
   private lastWalkingTime: number = Date.now();
   private lastStableTime: number = Date.now();
   private departureDetected: boolean = false;
+  // Tracks previous TTS state to detect speech-end → reset cooldown timer
+  private wasSpeaking: boolean = false;
 
   // cancelId: incremented by every manual user action.
   // Async functions capture it at start and abort if it changes mid-flight.
   private cancelId: number = 0;
 
+  /**
+   * Stores the most recently spoken progression question text.
+   * Used by repeatLastQuestion() to replay the question for the REPEAT voice intent.
+   */
+  private lastQuestion: string = "";
+
   private gpsAccuracy: number = 0;
   private wifiCount: number = 0;
   private avgRSSI: number = 0;
+
+  /**
+   * Set to true by transitionToEntrance().
+   * Consumed on the first ENTRANCE_LOCKED loop tick — by which point
+   * guide.tsx has mounted and SpeechEngine has subscribed to EventBus.
+   * This prevents the entrance ZONE_CHANGED from firing before anyone is listening.
+   */
+  private pendingEntranceEmit: boolean = false;
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -139,6 +155,7 @@ class SpatialOrchestrator {
     this.currentState = "OUTDOOR";
     this.departureDetected = false;
     this.confidence = 0;
+    this.pendingEntranceEmit = false;
   }
 
   // ─── Sensor Loop ────────────────────────────────────────────────────────────
@@ -176,12 +193,31 @@ class SpatialOrchestrator {
         const now = Date.now();
         const isSpeaking = await ttsController.isSpeaking();
 
+        // Breathing space: when TTS finishes, reset the 15s idle clock so the
+        // orchestrator never fires a progression prompt immediately after narration.
+        if (this.wasSpeaking && !isSpeaking) {
+          this.lastStableTime = Date.now();
+          console.log("[SpatialOrchestrator] TTS ended — 15s clock reset for breathing space.");
+        }
+        this.wasSpeaking = isSpeaking;
+
         // State machine
         switch (this.currentState) {
           case "OUTDOOR":
             break; // waiting for manualStart()
 
           case "ENTRANCE_LOCKED":
+            // On the FIRST tick of ENTRANCE_LOCKED, emit the deferred entrance
+            // ZONE_CHANGED. By now, guide.tsx has mounted and SpeechEngine has
+            // subscribed — so the event is guaranteed to be received.
+            // Skip the isSpeaking check on this same tick: SpeechEngine needs
+            // one event loop cycle to receive the event and begin TTS.
+            if (this.pendingEntranceEmit) {
+              this.pendingEntranceEmit = false;
+              console.log("[SpatialOrchestrator] Emitting deferred entrance ZONE_CHANGED.");
+              eventBus.emit({ type: "ZONE_CHANGED", zoneId: "entrance", confidence: 0.8 });
+              break; // hold — check isSpeaking on the NEXT loop tick (2s later)
+            }
             if (!isSpeaking) this.setState("WAITING_FOR_STOP");
             break;
 
@@ -197,8 +233,11 @@ class SpatialOrchestrator {
                 this.setState("ASKING_ZONE");
                 this.neighborAskIndex = 0;
                 this.askNeighbor();
-              } else if (!this.departureDetected && now - this.lastStableTime > 15000) {
-                console.log("[SpatialOrchestrator] 15s timeout — prompting next zone.");
+              } else if (!this.departureDetected && !isSpeaking && now - this.lastStableTime > 15000) {
+                // Guard: never fire a progression prompt while any TTS is playing.
+                // wasSpeaking→!isSpeaking already reset lastStableTime above,
+                // so this branch only fires after a genuine 15s silence window.
+                console.log("[SpatialOrchestrator] 15s silence timeout — prompting next zone.");
                 this.setState("ASKING_ZONE");
                 this.neighborAskIndex = 0;
                 this.askNeighbor();
@@ -253,8 +292,10 @@ class SpatialOrchestrator {
         this.pendingZone = startZone;
         
         if (this.cancelId !== capturedCancel) return;
-        await ttsController.speak(`Are you near the ${startZone.replace(/_/g, ' ')}?`);
+        this.lastQuestion = `Are you near the ${startZone.replace(/_/g, ' ')}?`;
+        await ttsController.speak(this.lastQuestion);
         if (this.cancelId !== capturedCancel) return;
+        eventBus.emit({ type: "ZONE_QUESTION_ASKED" });
         return;
       }
 
@@ -264,8 +305,10 @@ class SpatialOrchestrator {
         this.pendingZone = lastZone;
         
         if (this.cancelId !== capturedCancel) return;
-        await ttsController.speak(`The last destination is the ${lastZone.replace(/_/g, ' ')}. Are you near it?`);
+        this.lastQuestion = `The last destination is the ${lastZone.replace(/_/g, ' ')}. Are you near it?`;
+        await ttsController.speak(this.lastQuestion);
         if (this.cancelId !== capturedCancel) return;
+        eventBus.emit({ type: "ZONE_QUESTION_ASKED" });
         return;
       }
 
@@ -282,8 +325,10 @@ class SpatialOrchestrator {
         }
 
         if (this.cancelId !== capturedCancel) return;
-        await ttsController.speak(`Are you heading towards the ${displayName}?`);
+        this.lastQuestion = `Are you heading towards the ${displayName}?`;
+        await ttsController.speak(this.lastQuestion);
         if (this.cancelId !== capturedCancel) return;
+        eventBus.emit({ type: "ZONE_QUESTION_ASKED" });
       } else {
         // Exhausted neighbors
         if (this.neighborAskIndex === neighbors.length) {
@@ -291,8 +336,10 @@ class SpatialOrchestrator {
           this.pendingZone = this.currentZone;
           
           if (this.cancelId !== capturedCancel) return;
-          await ttsController.speak(`Are you still near the ${displayName}?`);
+          this.lastQuestion = `Are you still near the ${displayName}?`;
+          await ttsController.speak(this.lastQuestion);
           if (this.cancelId !== capturedCancel) return;
+          eventBus.emit({ type: "ZONE_QUESTION_ASKED" });
         } else {
           // Fallback
           if (this.cancelId !== capturedCancel) return;
@@ -308,7 +355,7 @@ class SpatialOrchestrator {
     }
   }
 
-  /** YES/NO response from UI buttons. */
+  /** YES/NO response from UI buttons or voice intent. */
   public handleResponse(yes: boolean) {
     if (this.currentState !== "ASKING_ZONE") return;
 
@@ -323,6 +370,18 @@ class SpatialOrchestrator {
     }
   }
 
+  /**
+   * Replays the last spoken progression question via TTS.
+   * Called when the user says "repeat" or "say that again".
+   * Emits ZONE_QUESTION_ASKED afterwards so guide.tsx reopens the auto-listen window.
+   */
+  public async repeatLastQuestion(): Promise<void> {
+    if (!this.lastQuestion || this.currentState !== "ASKING_ZONE") return;
+    await ttsController.speak(this.lastQuestion);
+    // Re-signal that a question has been asked — guide.tsx will re-open auto-listen
+    eventBus.emit({ type: "ZONE_QUESTION_ASKED" });
+  }
+
   // ─── Zone Transitions ────────────────────────────────────────────────────────
 
   private transitionToEntrance() {
@@ -330,7 +389,10 @@ class SpatialOrchestrator {
     this.visitedZones.add("entrance");
     this.confidence = 0.8;
     this.setState("ENTRANCE_LOCKED");
-    eventBus.emit({ type: "ZONE_CHANGED", zoneId: "entrance", confidence: 0.8 });
+    // Do NOT emit ZONE_CHANGED here — guide.tsx and SpeechEngine have not
+    // mounted yet. Set the flag so the loop emits it on its next tick.
+    this.pendingEntranceEmit = true;
+    console.log("[SpatialOrchestrator] Entrance pending — ZONE_CHANGED will fire on next loop tick.");
   }
 
   private triggerNarration(zoneId?: string) {
