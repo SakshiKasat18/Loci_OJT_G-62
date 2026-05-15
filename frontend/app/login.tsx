@@ -36,7 +36,7 @@ export default function Login() {
 
       if (res.status === 200 && data.token) {
         await saveToken(data.token);
-        router.replace("/guide");
+        router.replace("/onboarding");
         return;
       }
 
