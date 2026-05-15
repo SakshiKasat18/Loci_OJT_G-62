@@ -25,6 +25,7 @@ import { startIMU, stopIMU } from "../services/imuTracker";
 import { speechEngine } from "../core/SpeechEngine";
 import { spatialOrchestrator } from "../services/spatialOrchestrator";
 import { eventBus } from "../core/EventBus";
+import { ttsController } from "../core/TTSController";
 
 const ZONES = [
   "entrance",
@@ -56,14 +57,38 @@ export default function Guide() {
   const [isRecording, setIsRecording] = useState(false);
   const [orchData, setOrchData] = useState<any>(null);
   const [isThinking, setIsThinking] = useState(false);
+  /** Drives the subtle ambient listening indicator shown during auto-listen. */
+  const [isAutoListening, setIsAutoListening] = useState(false);
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isStoppingRef = useRef(false);
   const recordingStartTimeRef = useRef(0);
+  // [FIX-2] zoneIndex ref — always reflects current zone at transcription time,
+  // not stale closure value captured when recording started.
+  const zoneIndexRef = useRef(0);
+  // [FIX-5] Mounted ref — prevents setState calls after component unmounts
+  const mountedRef = useRef(true);
 
   const cancelRef = useRef(false);
   const sessionRef = useRef(0);
+
+  // ── Auto-listen refs ────────────────────────────────────────────────────────
+  /** True while a ZONE_QUESTION_ASKED-triggered auto-listen session is active. */
+  const isAutoListeningRef = useRef(false);
+  /** Timer that closes the auto-listen window after 5 s of silence. */
+  const autoListenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * cancelAutoListenRef — cancels only the 5s timer and resets UI/state flags.
+   * It does NOT stop the physical recording. Recording teardown is exclusively
+   * handled by safeStopRecording() to prevent double-unload errors.
+   */
+  const cancelAutoListenRef = useRef<() => void>(() => {});
+
+  // Deepgram API key — loaded from frontend/.env (EXPO_PUBLIC_DG_API_KEY).
+  // Never hardcode keys in source. Rotate in .env only.
+  const DG_API_KEY = process.env.EXPO_PUBLIC_DG_API_KEY ?? "";
+
 
   // Animations
   const screenFade = useRef(new Animated.Value(0)).current;
@@ -88,11 +113,43 @@ export default function Guide() {
     });
   }, []);
 
-  // Cleanup
+  // Deepgram key presence check — fires once on mount
   useEffect(() => {
+    if (!process.env.EXPO_PUBLIC_DG_API_KEY) {
+      console.error(
+        "[LOCI] ⚠️  EXPO_PUBLIC_DG_API_KEY is not set.\n" +
+        "  Add it to frontend/.env and restart Expo with --clear:\n" +
+        "  EXPO_PUBLIC_DG_API_KEY=your_key_here"
+      );
+    } else {
+      console.log("[LOCI] ✅ Deepgram key loaded from env.");
+    }
+  }, []);
+
+
+  // Cleanup + mounted guard
+  useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false; // [FIX-5] blocks setState after unmount
       cancelRef.current = true;
       Speech.stop();
+      // Cancel any active auto-listen window (clears timer + UI flag)
+      cancelAutoListenRef.current();
+      isAutoListeningRef.current = false;
+      // Fire-and-forget recording stop on unmount (navigator away / app background)
+      if (recordingRef.current) {
+        recordingRef.current.stopAndUnloadAsync().catch(() => {});
+        recordingRef.current = null;
+      }
+      if (recordingTimerRef.current) {
+        clearTimeout(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      if (autoListenTimeoutRef.current) {
+        clearTimeout(autoListenTimeoutRef.current);
+        autoListenTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -203,6 +260,8 @@ export default function Guide() {
 
       const zoneId = ZONES[index];
 
+      // [FIX-2] Keep ref in sync
+      zoneIndexRef.current = index;
       setZoneIndex(index);
       setState("playing");
       setReplayHint(false);
@@ -300,12 +359,15 @@ export default function Guide() {
       setState("paused");
       setReplayHint(false);
 
-      const zoneId = ZONES[zoneIndex];
+      const currentIdx = zoneIndexRef.current;
+      const zoneId        = ZONES[currentIdx];
+      const previousZone  = currentIdx > 0 ? ZONES[currentIdx - 1] : null;
+      const nextZone      = currentIdx < ZONES.length - 1 ? ZONES[currentIdx + 1] : null;
 
       const questions: Record<string, string> = {
         where: "Where am I right now?",
-        what: "What is this space?",
-        next: "Where do I go next?",
+        what:  "What is this space?",
+        next:  "Where do I go next?",
       };
 
       const question = questions[type];
@@ -313,206 +375,408 @@ export default function Guide() {
       closeSheet();
       await wait(300);
 
-      // ── Debug: sending
       setDebugText(`Sending: "${question}"`);
       crossFadeText("Thinking...");
-      console.log("[Ask Loci] Question:", question, "| Zone:", zoneId);
+      console.log(`[Ask Loci] Question: "${question}" | Zone: ${zoneId} | Next: ${nextZone}`);
 
       try {
         const token = await getToken();
         const res = await apiFetch("/ai/qa", {
           method: "POST",
           token: token ?? undefined,
-          body: JSON.stringify({ question, pack_id: "a3_polaris", zone: zoneId }),
+          body: JSON.stringify({
+            question,
+            pack_id:       "a3_polaris",
+            zone:          zoneId,
+            previous_zone: previousZone,
+            next_zone:     nextZone,
+          }),
         });
 
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        const data = await res.json();
-        const rawAnswer = data.answer || "";
+        const data   = await res.json();
+        const answer = (data.answer ?? "").trim();
 
-        const isBadResponse =
-          !rawAnswer ||
-          rawAnswer.toLowerCase().includes("don't have") ||
-          rawAnswer.toLowerCase().includes("not available") ||
-          rawAnswer.trim().length < 5;
-
-        let finalAnswer = rawAnswer;
-        if (isBadResponse) {
-          const zoneName = (zoneId || "this area").replace(/_/g, " ");
-          const q = question.toLowerCase();
-          if (q.includes("next") || q.includes("go")) {
-            finalAnswer = `You can move to the next section ahead.`;
-          } else if (q.includes("where")) {
-            finalAnswer = `You're currently in the ${zoneName}.`;
-          } else if (q.includes("what")) {
-            finalAnswer = `This is the ${zoneName}.`;
-          } else {
-            finalAnswer = `You're currently near the ${zoneName}.`;
-          }
-        }
-
-        console.log("[Ask Loci] AI Response:", finalAnswer);
-
-        await speak(finalAnswer, { rate: 0.78 });
+        console.log("[Ask Loci] AI answer:", answer);
+        await speak(answer || "I'm here to guide you through the spaces around you.", { rate: 0.78 });
       } catch (err) {
         console.warn("[Ask Loci] Error:", err);
         setDebugText("Something went wrong.");
-        await speak("Something went wrong.", { rate: 0.78 });
+        await speak("Something went wrong. Please try again.", { rate: 0.78 });
       } finally {
         setReplayHint(true);
       }
     },
-    [zoneIndex, closeSheet, speak, stopPulse, crossFadeText]
+    [zoneIndexRef, closeSheet, speak, stopPulse, crossFadeText]
   );
 
   // ── Deepgram STT helper — called after every recording stop ──────────────
+  // [FIX-2] Uses zoneIndexRef (not zoneIndex closure) so zone is always current.
+  // [FIX-3] setIsThinking(false) on ALL exit paths via finally.
   const transcribeAudio = useCallback(async (uri: string) => {
-    console.log("[Deepgram] Sending file:", uri);
+    if (!mountedRef.current) return;
+    console.log("[STT] transcribeAudio called. URI:", uri);
     setIsThinking(true);
 
     try {
+      // [FIX-4] Local file:// URIs on Android don't return ok:true from fetch().
+      // Read blob directly without checking ok — if the file doesn't exist,
+      // blob() will throw, which is caught below.
+      console.log("[STT] Reading audio file from device...");
       const fileRes = await fetch(uri);
-      // FIX (Stage 5): verify local file fetch actually succeeded
-      if (!fileRes.ok) {
-        console.warn("[Deepgram] Audio file fetch failed:", fileRes.status);
-        setDebugText(`Failed to read audio file (HTTP ${fileRes.status}).`);
-        return;
-      }
       const audioBlob = await fileRes.blob();
 
-      // ── File size guard — reject recordings that are too short ───────────
+      // File size guard — reject recordings that are too short
       const fileSizeKB = audioBlob.size / 1024;
-      console.log(`[Deepgram] File size: ${fileSizeKB.toFixed(1)} KB`);
+      console.log(`[STT] Audio file size: ${fileSizeKB.toFixed(1)} KB`);
       if (fileSizeKB < 10) {
-        console.warn("[Deepgram] File too small — recording likely too short.");
-        setDebugText(`Recording too short (${fileSizeKB.toFixed(1)} KB)\nHold mic longer and speak clearly.`);
+        console.warn("[STT] File too small — recording likely too short.");
+        if (mountedRef.current) {
+          setDebugText(`Recording too short (${fileSizeKB.toFixed(1)} KB). Hold mic longer.`);
+        }
         await speak("Recording was too short. Please hold and speak again.", { rate: 0.78 });
-        return;
+        return; // finally will still run → setIsThinking(false)
       }
 
+      // Send to Deepgram
+      console.log("[STT] Sending to Deepgram...");
       const dgRes = await fetch(
         "https://api.deepgram.com/v1/listen?model=nova-2&language=en",
         {
           method: "POST",
           headers: {
-            Authorization: "Token 57a547e7e05d060a0f81139cbf0868ec36fd194c",
-            "Content-Type": "audio/mp4", // .m4a container = audio/mp4 MIME type
+            Authorization: `Token ${DG_API_KEY}`,
+            "Content-Type": "audio/mp4",
           },
           body: audioBlob,
         }
       );
 
       const dgData = await dgRes.json();
-      console.log("[Deepgram] Full response:", JSON.stringify(dgData));
 
       if (!dgRes.ok) {
-        console.warn("[Deepgram] API error:", dgData);
-        setDebugText(`Deepgram error:\n${JSON.stringify(dgData)}`);
+        console.warn("[STT] Deepgram API error:", dgRes.status, dgData);
+        if (mountedRef.current) setDebugText(`Deepgram error ${dgRes.status}: ${dgData?.err_msg ?? "unknown"}`);
+        await speak("Speech service error. Please try again.", { rate: 0.78 });
         return;
       }
 
       const transcript: string =
         dgData?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
-      const confidence = dgData?.results?.channels?.[0]?.alternatives?.[0]?.confidence ?? "n/a";
-      const duration = dgData?.metadata?.duration ?? "n/a";
-      console.log(`[Deepgram] Confidence: ${confidence} | Duration: ${duration}s`);
+      const dgConfidence = dgData?.results?.channels?.[0]?.alternatives?.[0]?.confidence ?? 0;
+      const dgDuration = dgData?.metadata?.duration ?? 0;
+      console.log(`[STT] Transcript: "${transcript}" | Confidence: ${dgConfidence} | Duration: ${dgDuration}s`);
 
       if (!transcript.trim()) {
-        console.log("[Deepgram] No speech detected.");
-        setDebugText("No speech detected.");
-        await speak("I didn't catch that. Please try again.", { rate: 0.78 });
+        console.log("[STT] No speech detected in audio.");
+        if (mountedRef.current) setDebugText("No speech detected.");
+        // During auto-listen, silence is not an error — stay quiet and let timeout expire.
+        if (!isAutoListeningRef.current) {
+          await speak("I didn't catch that. Please try again.", { rate: 0.78 });
+        }
         return;
       }
 
-      console.log("[Deepgram] Transcript:", transcript);
-      setDebugText(`Transcript:\n"${transcript}"`);
+      // ── PROGRESSION INTENT INTERCEPTOR ─────────────────────────────────────
+      // CRITICAL: This check runs BEFORE the AI QA call.
+      // Gate: fires if auto-listen is active OR orchestrator is in ASKING_ZONE.
+      // Using both gates prevents the race where the orchestrator's 2s loop
+      // ticks and changes state between Deepgram returning and this check.
+      const orchState = spatialOrchestrator.getData().currentState;
+      const inProgressionContext = isAutoListeningRef.current || orchState === "ASKING_ZONE";
 
-      // ── Stop any ongoing narration before answering ──────────────────────
+      // Normalize transcript: lowercase → trim → strip punctuation → collapse whitespace
+      const normalized = transcript
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      console.log(
+        `[STT] Raw: "${transcript}" | Normalized: "${normalized}" | orchState: ${orchState} | autoListen: ${isAutoListeningRef.current}`
+      );
+
+
+      if (inProgressionContext) {
+        // ── Core yes-word match (fires in any progression context) ──────────
+        const isStrictYes = /^(yes|yeah|yep|sure|correct|right|okay|ok|yup)$/.test(normalized) ||
+                            /\b(yes|yeah|yep|sure|correct|right)\b/.test(normalized);
+
+        // ── Semantic movement confirmation (only while actively being asked) ─
+        // Catches: "i am heading towards the reception", "going to the cafeteria",
+        //          "moving towards admin block", "heading there", "yes reception".
+        const isMovementYes = orchState === "ASKING_ZONE" && (
+          /\b(heading|going|moving|walking|towards|toward|there|let's go|lets go)\b/.test(normalized)
+        );
+
+        const isYes = isStrictYes || isMovementYes;
+
+        const isNo   = /^(no|nope|nah|wrong)$/.test(normalized) ||
+                       /\b(no|nope|nah|wrong)\b/.test(normalized);
+        const isRpt  = /\b(repeat|again|say that again|what did you say|pardon|come again)\b/.test(normalized);
+        const isSkip = /\b(skip|next|move on|continue|forward|go ahead)\b/.test(normalized);
+
+        if (isYes) {
+          const reason = isMovementYes ? "MOVEMENT_PHRASE" : "YES_WORD";
+          console.log(`[VOICE_INTENT_DETECTED] YES (${reason}): "${normalized}"`);
+          console.log("[VOICE_INTENT_CONFIRMED] Calling handleResponse(true) — QA_BYPASSED");
+          spatialOrchestrator.handleResponse(true);
+          if (mountedRef.current) setDebugText("✓ Voice: YES");
+          return;
+        }
+
+
+        if (isNo) {
+          console.log("[VOICE_INTENT_DETECTED] NO");
+          console.log("[VOICE_INTENT_CONFIRMED] Calling handleResponse(false) — QA_BYPASSED");
+          spatialOrchestrator.handleResponse(false);
+          if (mountedRef.current) setDebugText("\u2713 Voice: NO");
+          return;
+        }
+
+        if (isRpt) {
+          console.log("[VOICE_INTENT_DETECTED] REPEAT");
+          console.log("[VOICE_INTENT_CONFIRMED] REPEAT_TRIGGERED — QA_BYPASSED");
+          if (mountedRef.current) setDebugText("\u2713 Voice: Repeating...");
+          await spatialOrchestrator.repeatLastQuestion();
+          return; // repeatLastQuestion re-emits ZONE_QUESTION_ASKED → new auto-listen window
+        }
+
+        if (isSkip) {
+          console.log("[VOICE_INTENT_DETECTED] SKIP");
+          console.log("[VOICE_INTENT_CONFIRMED] SKIP_TRIGGERED — QA_BYPASSED");
+          spatialOrchestrator.handleResponse(false);
+          if (mountedRef.current) setDebugText("\u2713 Voice: Skipping...");
+          return;
+        }
+
+        // No navigation intent matched — fall through to AI QA
+        console.log(`[VOICE_INTENT_IGNORED] No progression intent in: "${normalized}" — QA_FALLTHROUGH`);
+      }
+
+      if (!mountedRef.current) return;
+      setDebugText(`"${transcript}"`);
+
+      // Stop any ongoing narration before answering
       cancelRef.current = true;
       sessionRef.current++;
       Speech.stop();
       stopPulse();
       setState("paused");
 
-      // ── Send transcript to AI ────────────────────────────────────────────
-      const zoneId = ZONES[zoneIndex] ?? "unknown";
-      console.log("[Ask Loci] Sending to AI:", transcript, "| Zone:", zoneId);
-      setDebugText(`Sending to AI:\n"${transcript}"`);
+      // Pause the orchestrator's 15s timer while the AI is handling this question.
+      // Without this, the timer could fire mid-AI-response and interrupt with a
+      // progression prompt ("Are you heading towards...") causing overlapping TTS.
+      spatialOrchestrator.cancelAll();
+
+      // Always read zone from ref — never from stale closure
+      const currentIdx   = zoneIndexRef.current;
+      const zoneId       = ZONES[currentIdx] ?? "unknown";
+      const previousZone = currentIdx > 0 ? ZONES[currentIdx - 1] : null;
+      const nextZone     = currentIdx < ZONES.length - 1 ? ZONES[currentIdx + 1] : null;
+
+      console.log(`[AI] Sending to backend. Question: "${transcript}" | Zone: ${zoneId} | Next: ${nextZone}`);
+      if (mountedRef.current) setDebugText(`Asking AI: "${transcript}"`);
 
       const token = await getToken();
       const res = await apiFetch("/ai/qa", {
         method: "POST",
         token: token ?? undefined,
-        body: JSON.stringify({ question: transcript, pack_id: "a3_polaris", zone: zoneId }),
+        body: JSON.stringify({
+          question:      transcript,
+          pack_id:       "a3_polaris",
+          zone:          zoneId,
+          previous_zone: previousZone,
+          next_zone:     nextZone,
+        }),
       });
 
-      if (!res.ok) throw new Error(`AI HTTP ${res.status}`);
-
-      const data = await res.json();
-      const rawAnswer = data.answer || "";
-
-      const isBadResponse =
-        !rawAnswer ||
-        rawAnswer.toLowerCase().includes("don't have") ||
-        rawAnswer.toLowerCase().includes("not available") ||
-        rawAnswer.trim().length < 5;
-
-      let finalAnswer = rawAnswer;
-      if (isBadResponse) {
-        const zoneName = (zoneId || "this area").replace(/_/g, " ");
-        const q = transcript.toLowerCase();
-        if (q.includes("next") || q.includes("go")) {
-          finalAnswer = `You can move to the next section ahead.`;
-        } else if (q.includes("where")) {
-          finalAnswer = `You're currently in the ${zoneName}.`;
-        } else if (q.includes("what")) {
-          finalAnswer = `This is the ${zoneName}.`;
-        } else {
-          finalAnswer = `You're currently near the ${zoneName}.`;
-        }
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(`AI HTTP ${res.status}: ${errText}`);
       }
 
-      console.log("[Ask Loci] AI Response:", finalAnswer);
+      const data   = await res.json();
+      const answer = (data.answer ?? "").trim();
+      // Deep log: expose the full backend payload so we can verify LLM output
+      // is reaching the frontend without any validation stripping.
+      console.log("[AI] Raw backend payload:", JSON.stringify(data));
+      console.log("[AI] Final answer to speak:", answer);
 
-      await speak(finalAnswer, { rate: 0.78 });
-      setReplayHint(true);
+      await speak(answer || "I'm here to guide you through the spaces around you.", { rate: 0.78 });
+      if (mountedRef.current) setReplayHint(true);
+
+      // Cooldown: wait 1.5s after AI speaks before resuming the orchestrator.
+      // This prevents an instant auto-listen trigger if the 15s timer was close
+      // to firing before this AI interaction began.
+      await wait(1500);
+      const resumeZone = ZONES[zoneIndexRef.current];
+      if (resumeZone && mountedRef.current) {
+        spatialOrchestrator.skipToZone(resumeZone);
+        console.log(`[AI] Orchestrator resumed at zone: ${resumeZone} — 15s clock restarted.`);
+      }
     } catch (err) {
-      console.warn("[Deepgram] Fetch error:", err);
+      console.warn("[STT/AI] Pipeline error:", err);
+      if (mountedRef.current) setDebugText("Something went wrong. Try again.");
       await speak("Something went wrong.", { rate: 0.78 });
     } finally {
-      setIsThinking(false);
+      if (mountedRef.current) setIsThinking(false);
+      // Reset auto-listen UI state. The recording has already been stopped by
+      // safeStopRecording() before transcribeAudio was called, so we only need
+      // to clear the timer and the UI flag here.
+      cancelAutoListenRef.current();
     }
-  }, [zoneIndex, speak, stopPulse]);
+  }, [speak, stopPulse]);
 
-  const handleMicPress = useCallback(async () => {
-    // ── STOP if already recording ─────────────────────────────────────────────
-    if (isRecording && recordingRef.current) {
-      // FIX (Stage 3): lock prevents double-stop from race condition
-      if (isStoppingRef.current) {
-        console.warn("[Mic] Stop already in progress — ignoring.");
+  /**
+   * safeStopRecording — the ONLY function allowed to call stopAndUnloadAsync().
+   *
+   * Idempotent: if a stop is already in progress (isStoppingRef), returns immediately.
+   * Returns the audio URI on success, or null if nothing was recorded / already stopped.
+   *
+   * Correct call sequence for every recording path:
+   *   1. const uri = await safeStopRecording();
+   *   2. if (uri) await transcribeAudio(uri);
+   *   3. cancelAutoListenRef.current()  [auto-listen only]
+   */
+  const safeStopRecording = useCallback(async (): Promise<string | null> => {
+    const rec = recordingRef.current;
+    if (!rec) {
+      console.log("[RECORDING_STOP_SKIPPED] No active recording ref.");
+      return null;
+    }
+    if (isStoppingRef.current) {
+      console.log("[RECORDING_STOP_SKIPPED_ALREADY_STOPPING] Stop already in progress.");
+      return null;
+    }
+
+    console.log("[RECORDING_STOP_REQUESTED]");
+    isStoppingRef.current = true;
+
+    try {
+      await rec.stopAndUnloadAsync();
+      const uri = rec.getURI() ?? null;
+      console.log(uri ? `[RECORDING_URI_READY] ${uri}` : "[RECORDING_URI_READY] null — nothing captured");
+      return uri;
+    } catch (err) {
+      // Expo throws if the recording was already unloaded by another path.
+      // Treat this as a non-fatal: the recording is gone, URI is lost.
+      console.warn("[RECORDING_STOP_ERROR] stopAndUnloadAsync failed:", err);
+      return null;
+    } finally {
+      // Always release ownership so next recording can start cleanly
+      recordingRef.current = null;
+      isStoppingRef.current = false;
+      console.log("[RECORDING_STOP_SUCCESS]");
+    }
+  }, []);
+
+  /**
+   * Temporary auto-listen engine.
+   *
+   * Triggered by ZONE_QUESTION_ASKED after the orchestrator's TTS resolves.
+   * Opens the mic for up to 5 s. If the user speaks, safeStopRecording() is
+   * called exactly once, then transcribeAudio() handles intent + AI QA.
+   *
+   * Responsibility split:
+   *   safeStopRecording()    → physical recording lifecycle (one owner, idempotent)
+   *   cancelAutoListenRef()  → timer + UI flag only (never touches recording)
+   */
+  const startAutoListen = useCallback(async () => {
+    // Gate 1: No duplicate sessions
+    if (isAutoListeningRef.current) {
+      console.log("[AUTO_LISTEN] Already active — ignoring duplicate trigger.");
+      return;
+    }
+    // Gate 2: Manual recording already in progress
+    if (recordingRef.current || isStoppingRef.current) {
+      console.log("[AUTO_LISTEN] Manual recording active — skipping auto-listen.");
+      return;
+    }
+
+    // Gate 3: Wait for TTS to fully release + OS audio routing buffer
+    const stillSpeaking = await ttsController.isSpeaking();
+    if (stillSpeaking) {
+      console.log("[AUTO_LISTEN] TTS still active — waiting 600 ms for audio focus release.");
+      await wait(600);
+    } else {
+      await wait(500); // safety buffer even when TTS reports done
+    }
+
+    // Gate 4: Orchestrator may have moved on during our wait
+    if (spatialOrchestrator.getData().currentState !== "ASKING_ZONE") {
+      console.log("[AUTO_LISTEN] Orchestrator left ASKING_ZONE during delay — aborting.");
+      return;
+    }
+    // Gate 5: Race — another path opened a recording during the delay
+    if (isAutoListeningRef.current || recordingRef.current) {
+      console.log("[AUTO_LISTEN] Recording started by another path during delay — aborting.");
+      return;
+    }
+    if (!mountedRef.current) return;
+
+    // ── All gates passed: enter auto-listen ─────────────────────────────────
+    isAutoListeningRef.current = true;
+    if (mountedRef.current) setIsAutoListening(true);
+
+    // Register cancelAutoListenRef for this session.
+    // Scope: cancels the 5s timer + resets UI/flag. NEVER stops the recording.
+    cancelAutoListenRef.current = () => {
+      if (autoListenTimeoutRef.current) {
+        clearTimeout(autoListenTimeoutRef.current);
+        autoListenTimeoutRef.current = null;
+      }
+      isAutoListeningRef.current = false;
+      if (mountedRef.current) setIsAutoListening(false);
+      cancelAutoListenRef.current = () => {}; // reset to no-op
+    };
+
+    console.log("[AUTO_LISTEN] AUTO_LISTEN_STARTED");
+
+    try {
+      const { granted } = await Audio.requestPermissionsAsync();
+      if (!granted) {
+        console.warn("[AUTO_LISTEN] Microphone permission denied.");
+        cancelAutoListenRef.current();
         return;
       }
-      isStoppingRef.current = true;
 
-      console.log("[Mic] Stopping recording...");
-      if (recordingTimerRef.current) clearTimeout(recordingTimerRef.current);
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
 
-      // FIX (Stage 3): smart wait — only delay the remaining time, not a full 2.5s
-      const elapsed = Date.now() - recordingStartTimeRef.current;
-      const remaining = Math.max(0, 2500 - elapsed);
-      if (remaining > 0) {
-        setDebugText(`Recording... (${(remaining / 1000).toFixed(1)}s remaining)`);
-        await new Promise((resolve) => setTimeout(resolve, remaining));
+      // Check again: something may have cancelled us during async permission call
+      if (!isAutoListeningRef.current || !mountedRef.current) {
+        console.log("[AUTO_LISTEN] Cancelled during permission check — aborting.");
+        return;
       }
 
-      try {
-        await recordingRef.current.stopAndUnloadAsync();
-        const uri = recordingRef.current.getURI();
-        recordingRef.current = null;
-        setIsRecording(false);
-        isStoppingRef.current = false;
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      console.log("[RECORDING_STARTED] Auto-listen recording active.");
 
+      recordingRef.current = recording;
+      recordingStartTimeRef.current = Date.now();
+      isStoppingRef.current = false;
+
+      // 5-second silence window
+      autoListenTimeoutRef.current = setTimeout(async () => {
+        if (!isAutoListeningRef.current) return;
+        console.log("[AUTO_LISTEN] AUTO_LISTEN_TIMEOUT — 5 s elapsed, finalising recording.");
+
+        // Step 1: cancel the timer/UI state (does NOT touch the recording)
+        cancelAutoListenRef.current();
+
+        // Step 2: stop the recording exactly once via the safe helper
+        const uri = await safeStopRecording();
+
+        // Step 3: release audio mode back to playback
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
@@ -520,22 +784,76 @@ export default function Guide() {
           playThroughEarpieceAndroid: false,
         });
 
-        console.log("[Mic] Audio file:", uri);
-        if (uri) await transcribeAudio(uri);
-      } catch (err) {
-        console.warn("[Mic] Stop error:", err);
-        setDebugText("Failed to stop recording.");
-        setIsRecording(false);
-        isStoppingRef.current = false;
+        // Step 4: attempt transcription (silence is handled gracefully inside)
+        if (uri && mountedRef.current) {
+          console.log("[TRANSCRIPTION_STARTED] Sending timeout audio to Deepgram.");
+          await transcribeAudio(uri);
+        }
+      }, 3000);
+    } catch (err) {
+      console.warn("[AUTO_LISTEN] Failed to start recording:", err);
+      cancelAutoListenRef.current();
+    }
+  }, [safeStopRecording, transcribeAudio]);
+
+  const handleMicPress = useCallback(async () => {
+    // Demo safety: block manual recording while TTS is actively speaking.
+    // Prevents narration audio bleeding into the STT capture window.
+    const speaking = await ttsController.isSpeaking();
+    if (speaking) {
+      console.log("[MANUAL_MIC_BLOCKED] TTS is active — ignoring mic press to prevent bleed.");
+      return;
+    }
+
+    // If auto-listen is running: cancel the timer/UI state, then let the
+    // manual recording flow continue normally. safeStopRecording below will
+    // handle stopping whatever the auto-listen session was recording.
+    if (isAutoListeningRef.current) {
+      console.log("[MANUAL_OVERRIDE] Manual mic press — cancelling auto-listen.");
+      cancelAutoListenRef.current(); // sync: only clears timer + UI, not recording
+    }
+
+    // ── STOP if already recording ──────────────────────────────────────────
+    if (isRecording || recordingRef.current) {
+      if (recordingTimerRef.current) {
+        clearTimeout(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+
+      // Honour the minimum 2.5 s capture window to ensure Deepgram gets enough audio
+      const elapsed = Date.now() - recordingStartTimeRef.current;
+      const remaining = Math.max(0, 2500 - elapsed);
+      if (remaining > 0) {
+        setDebugText(`Recording... (${(remaining / 1000).toFixed(1)}s remaining)`);
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+
+      console.log("[RECORDING_STOP_REQUESTED] Manual stop.");
+      const uri = await safeStopRecording(); // single owner — no double-unload possible
+
+      setIsRecording(false);
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      if (uri) {
+        console.log("[RECORDING_URI_READY] Manual recording.", uri);
+        console.log("[TRANSCRIPTION_STARTED] Sending manual recording to Deepgram.");
+        await transcribeAudio(uri);
+        console.log("[TRANSCRIPTION_COMPLETED] Manual flow done.");
+      } else {
+        setDebugText("Recording too short or failed. Try again.");
       }
       return;
     }
 
-    // ── START recording ───────────────────────────────────────────────────────
+    // ── START recording ────────────────────────────────────────────────────
     try {
-      console.log("[Mic] Requesting permission...");
       const { granted } = await Audio.requestPermissionsAsync();
-      console.log("[Mic] Permission granted:", granted); // FIX (Stage 1): log result
       if (!granted) {
         setDebugText("Microphone permission denied.");
         console.warn("[Mic] Permission denied.");
@@ -549,45 +867,36 @@ export default function Guide() {
         playThroughEarpieceAndroid: false,
       });
 
-      console.log("[Mic] Recording start...");
-      setDebugText("Recording... speak now");
-
+      setDebugText("Recording… speak now");
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
-      console.log("[Mic] Recording active.");
+      console.log("[RECORDING_STARTED] Manual recording active.");
 
-      // Set state AFTER createAsync confirms recording is active
       recordingRef.current = recording;
       recordingStartTimeRef.current = Date.now();
       isStoppingRef.current = false;
       setIsRecording(true);
 
-      // Auto-stop after 7 seconds
+      // 7-second auto-stop for manual recordings
       recordingTimerRef.current = setTimeout(async () => {
         if (!recordingRef.current || isStoppingRef.current) return;
-        isStoppingRef.current = true;
-        console.log("[Mic] Auto-stopping after 7s...");
-        try {
-          await recordingRef.current.stopAndUnloadAsync();
-          const uri = recordingRef.current.getURI();
-          recordingRef.current = null;
-          setIsRecording(false);
-          isStoppingRef.current = false;
+        console.log("[RECORDING_STOP_REQUESTED] Manual 7 s auto-stop.");
 
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: false,
-            playsInSilentModeIOS: true,
-            shouldDuckAndroid: true,
-            playThroughEarpieceAndroid: false,
-          });
+        const uri = await safeStopRecording();
+        setIsRecording(false);
 
-          console.log("[Mic] Auto-stop. Audio file:", uri);
-          if (uri) await transcribeAudio(uri);
-        } catch (err) {
-          console.warn("[Mic] Auto-stop error:", err);
-          setIsRecording(false);
-          isStoppingRef.current = false;
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+
+        if (uri) {
+          console.log("[TRANSCRIPTION_STARTED] 7 s auto-stop audio to Deepgram.");
+          await transcribeAudio(uri);
+          console.log("[TRANSCRIPTION_COMPLETED] 7 s auto-stop done.");
         }
       }, 7000);
     } catch (err) {
@@ -595,7 +904,7 @@ export default function Guide() {
       setDebugText("Failed to start recording.");
       setIsRecording(false);
     }
-  }, [isRecording, transcribeAudio]);
+  }, [isRecording, safeStopRecording, transcribeAudio]);
 
   // --- Effects ---
 
@@ -610,15 +919,28 @@ export default function Guide() {
 
   // Lifecycle and Services
   useEffect(() => {
+    console.log("[GUIDE] Guide mounted.");
     startIMU();
     speechEngine.init();
 
+    // Start the sensor loop (idempotent — safe to call even if already running)
     spatialOrchestrator.start();
+
+    // If orchestrator is already active (coming from onboarding's manualStart),
+    // skip the idle state entirely so the 'Start Experience' button never appears.
+    // This prevents the user from triggering a second manualStart().
+    const orchState = spatialOrchestrator.getData().currentState;
+    if (orchState !== "OUTDOOR" && orchState !== "TOUR_FINISHED") {
+      console.log(`[GUIDE] Orchestrator already active (${orchState}) — skipping idle state.`);
+      setState("playing");
+    }
 
     const unsubscribe = eventBus.subscribe((event) => {
       if (event.type === "ZONE_CHANGED") {
         const idx = ZONES.indexOf(event.zoneId as any);
         if (idx !== -1) {
+          // [FIX-2] Keep zoneIndexRef in sync with the state update
+          zoneIndexRef.current = idx;
           setZoneIndex(idx);
           setState("playing");
           crossFadeText(getZoneStatusLine(event.zoneId));
@@ -631,6 +953,12 @@ export default function Guide() {
         crossFadeText("The tour has ended.");
         stopPulse();
       }
+      if (event.type === "ZONE_QUESTION_ASKED") {
+        // The orchestrator just finished speaking a progression question.
+        // Open a temporary 3-second listening window so the user can respond
+        // hands-free. startAutoListen has its own safety gates.
+        startAutoListen();
+      }
     });
 
     const timer = setInterval(() => {
@@ -638,6 +966,7 @@ export default function Guide() {
     }, 1000);
 
     return () => {
+      console.log("[GUIDE] Guide unmounting — cleaning up.");
       cancelRef.current = true;
       Speech.stop();
       stopIMU();
@@ -645,8 +974,12 @@ export default function Guide() {
       spatialOrchestrator.stop();
       unsubscribe();
       clearInterval(timer);
+      // Clean up any active auto-listen session on unmount
+      if (autoListenTimeoutRef.current) clearTimeout(autoListenTimeoutRef.current);
+      isAutoListeningRef.current = false;
     };
-  }, [crossFadeText, startPulse, stopPulse]);
+  }, [crossFadeText, startPulse, stopPulse, startAutoListen]);
+
 
   // Idle breathing
   useEffect(() => {
@@ -718,12 +1051,43 @@ export default function Guide() {
 
           {orchData?.currentState === "ASKING_ZONE" && (
             <View style={styles.promptActions}>
-              <Pressable style={[styles.actionBtn, styles.yesBtn]} onPress={() => spatialOrchestrator.handleResponse(true)}>
+              <Pressable
+                style={[styles.actionBtn, styles.yesBtn]}
+                onPress={async () => {
+                  // MANUAL_OVERRIDE: stop auto-listen recording + cancel UI state.
+                  // Must stop recording to prevent the 5s timeout from firing a
+                  // delayed transcript after progression has already advanced.
+                  if (isAutoListeningRef.current) {
+                    console.log("[MANUAL_OVERRIDE] YES button — stopping auto-listen recording.");
+                    cancelAutoListenRef.current(); // clears timer + UI (sync)
+                    await safeStopRecording();     // discards the in-flight recording
+                  }
+                  spatialOrchestrator.handleResponse(true);
+                }}
+              >
                 <Text style={styles.actionBtnText}>YES</Text>
               </Pressable>
-              <Pressable style={[styles.actionBtn, styles.noBtn]} onPress={() => spatialOrchestrator.handleResponse(false)}>
+              <Pressable
+                style={[styles.actionBtn, styles.noBtn]}
+                onPress={async () => {
+                  if (isAutoListeningRef.current) {
+                    console.log("[MANUAL_OVERRIDE] NO button — stopping auto-listen recording.");
+                    cancelAutoListenRef.current();
+                    await safeStopRecording();
+                  }
+                  spatialOrchestrator.handleResponse(false);
+                }}
+              >
                 <Text style={styles.actionBtnText}>NO</Text>
               </Pressable>
+            </View>
+          )}
+
+          {/* Auto-listen ambient indicator — appears only during the 4s window */}
+          {isAutoListening && (
+            <View style={styles.autoListenRow}>
+              <View style={styles.autoListenDot} />
+              <Text style={styles.autoListenText}>Listening…</Text>
             </View>
           )}
         </View>
@@ -965,23 +1329,24 @@ const styles = StyleSheet.create({
     backgroundColor: TEAL,
   },
 
-  // Controls
+  // Controls — intentionally low visual weight; secondary to the experience
   controls: {
     flexDirection: "row",
     paddingBottom: 48,
     paddingTop: 8,
     gap: 16,
     alignItems: "center",
+    opacity: 0.5,
   },
   ctrlBtn: {
     paddingVertical: 8,
   },
   ctrlText: {
-    color: "#555",
+    color: "#aaa",
     fontSize: 14,
   },
   ctrlPrimary: {
-    color: "#111",
+    color: "#666",
     fontWeight: "600",
   },
 
@@ -1125,5 +1490,26 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold" as const,
     fontSize: 14,
+  },
+  // Auto-listen ambient indicator
+  autoListenRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    marginTop: 20,
+    gap: 7,
+  },
+  autoListenDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: TEAL,
+    opacity: 0.85,
+  },
+  autoListenText: {
+    color: TEAL,
+    fontSize: 12,
+    fontWeight: "400" as const,
+    letterSpacing: 0.4,
+    opacity: 0.85,
   },
 });
