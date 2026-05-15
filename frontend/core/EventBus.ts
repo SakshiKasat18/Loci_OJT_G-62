@@ -23,6 +23,15 @@ export type LociEvent =
     }
   | {
       type: "TOUR_FINISHED";
+    }
+  | {
+      /**
+       * Emitted by SpatialOrchestrator immediately after a progression
+       * question TTS has fully resolved (onDone/onStopped/onError).
+       * guide.tsx listens for this to open the temporary auto-listen window.
+       * The orchestrator is now in ASKING_ZONE and waiting for handleResponse().
+       */
+      type: "ZONE_QUESTION_ASKED";
     };
 
 export type EventHandler = (event: LociEvent) => void;
