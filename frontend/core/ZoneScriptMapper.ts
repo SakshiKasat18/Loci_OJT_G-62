@@ -9,80 +9,95 @@ const ZONES: Record<string, ZoneData> = {
   entrance: {
     label: "Entrance",
     statusLine: "You're at the entrance.",
-    shortDesc: "The threshold of the LOCI experience.",
-    segments: ["You're at the entrance."],
+    shortDesc: "The threshold of the Polaris campus.",
+    segments: [
+      "You're now inside the Polaris School of Technology campus.",
+      "From here, the experience gradually shifts inward — from the noise of the tech park outside into a more focused indoor environment.",
+      "As you move through the campus, LO-KAI will guide you through the spaces and the thinking behind them.",
+    ],
   },
 
   reception: {
     label: "Reception",
-    statusLine: "This is where everything begins.",
-    shortDesc: "The main entry point, inspired by the north star — a constant reference point.",
+    statusLine: "This is the reception area.",
+    shortDesc: "The main entry point, inspired by Polaris and celestial navigation.",
     segments: [
-      "This is usually the first thing you see when you walk in.",
-      "That circular installation above you is inspired by long-exposure star trail photographs. Every star tracing a perfect orbit around one fixed point — Polaris.",
-      "The campus takes its name from it. The idea of a fixed point. Something to return to.",
+      "So... this is the reception.",
+      "Well, look up for a moment.",
+      "The circular installation above traces the movement of stars around a single fixed point.",
+      "That point is Polaris — the North Star.",
+      "For centuries, people used it for navigation because, unlike most stars, it barely appears to move.",
+      "The campus takes its name from that idea — a fixed reference point while everything around it keeps changing.",
     ],
   },
 
   radial_classroom: {
     label: "Radial Classroom",
-    statusLine: "A room where every voice carries equally.",
-    shortDesc: "A semi-circular space built for high-impact conversations and talks.",
+    statusLine: "The Radial Classroom.",
+    shortDesc: "A semi-circular learning space built around equal sightlines.",
     segments: [
-      "Notice the shape of this room.",
-      "Every seat has exactly the same view. There's no front row or back row.",
-      "It's designed for talks that matter — founders, speakers, panels, fireside conversations.",
-      "Wherever you're sitting, the room works equally well for you.",
+      "This room is arranged in a semi-circle, so every seat shares nearly the same line of sight.",
+      "There isn't really a front row or a back row here.",
+      "A lot of founder sessions, build reviews, and open discussions happen in this space.",
+      "The layout keeps the speaker and the audience on almost the same level, which changes the way conversations happen inside the room.",
     ],
   },
 
   admin_block: {
     label: "Admin Block",
-    statusLine: "The campus brain.",
-    shortDesc: "Where operations and admissions meet.",
-    segments: ["This is the admin block where all campus operations are managed."],
+    statusLine: "The admin and mentor area.",
+    shortDesc: "Mentorship spaces, admin operations, and student achievement displays.",
+    segments: [
+      "This section of the campus houses mentor rooms, faculty spaces, and the admin offices.",
+      "It's also where a lot of day-to-day guidance happens — project reviews, discussions, and one-on-one mentoring.",
+      "Along the nearby walls, you'll notice displays featuring student contributions to programmes like GSoC, LFX, and C4GT.",
+      "Most of that work was built by students while they were still studying here.",
+    ],
   },
 
   cafeteria: {
     label: "Cafeteria",
-    statusLine: "Built for you to actually slow down.",
-    shortDesc: "Designed to feel like a café — warm light, slow pace, actual rest.",
+    statusLine: "The cafeteria.",
+    shortDesc: "A slower, warmer social space inside the campus.",
     segments: [
-      "Yellow light. Warm tables. This space was designed to slow you down.",
-      "It is not a canteen. The goal is for you to actually eat, sit for a while, and come back ready.",
+      "You'll probably notice the lighting first.",
+      "The cafeteria uses warmer yellow light instead of the white overhead lighting used across most institutional spaces.",
+      "The idea was to make this feel closer to a café than a canteen.",
+      "It's one of the few spaces on campus intentionally designed to slow the pace down a little.",
     ],
   },
 
   gaming_arcade: {
     label: "Gaming Arcade",
-    statusLine: "Unplug and play.",
-    shortDesc: "A high-energy social hub for relaxation and competition.",
+    statusLine: "The gaming arcade.",
+    shortDesc: "A high-energy social space for unwinding.",
     segments: [
       "This is the gaming arcade.",
-      "Professional setups, fast internet, and the best place to blow off steam after a long building session.",
-      "Remember, the best builders also know when to hit pause.",
+      "The atmosphere here is intentionally different from the rest of the campus — brighter, louder, and far less structured.",
+      "It acts as a reset point between long work sessions, collaborative projects, and everything happening across the academic spaces nearby.",
     ],
   },
 
   innovation_lab: {
     label: "Innovation Lab",
-    statusLine: "The future is built here.",
-    shortDesc: "A dedicated workshop for hardware prototyping and experimental tech.",
+    statusLine: "The Innovation Lab.",
+    shortDesc: "The physical prototyping and hardware build space.",
     segments: [
-      "You've reached the Innovation Lab — the absolute edge of campus.",
-      "This is where hardware and software collide. Prototyping, soldering, 3D printing — it all happens right here.",
-      "You have come to the end of the tour. Feel free to explore!"
+      "You've reached the Innovation Lab.",
+      "This space is built for physical prototyping — workbenches, soldering stations, 3D printers, components, and hardware experiments.",
+      "A lot of student projects move from software into physical builds here.",
+      "This is the final stop in the guided experience. Feel free to stay back and explore the space around you.",
     ],
   },
-  
+
   polaris: {
     label: "Polaris Campus",
-    statusLine: "Taking the scenic route.",
-    shortDesc: "A constant reference point in your technology journey.",
+    statusLine: "Polaris School of Technology.",
+    shortDesc: "A project-based technology campus inside Divyasree Tech Park.",
     segments: [
-      "Polaris is designed to be your North Star. A constant reference point as you navigate the ever-changing world of technology.",
-      "The architecture and spaces you see around you are all built to foster collaboration, experimentation, and deep work.",
-      "Whether you're in a classroom or the arcade, every inch of this campus is meant to support your growth as a builder.",
+      "Polaris School of Technology is a project-based technology campus inside Divyasree Tech Park.",
+      "The culture here is heavily centred around building — open-source contributions, mentorship, hackathons, collaborative projects, and hands-on learning.",
+      "Most of the spaces around you are designed to support that rhythm between focused work and collaboration.",
     ],
   },
 };
