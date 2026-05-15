@@ -36,15 +36,22 @@ router.post("/intent", requireAuth, async (req, res) => {
 });
 
 // POST /ai/qa
+// Body: { question, pack_id, zone, previous_zone?, next_zone? }
 router.post("/qa", requireAuth, async (req, res) => {
-  const { question, pack_id, zone } = req.body || {};
+  const { question, pack_id, zone, previous_zone, next_zone } = req.body || {};
 
   if (!question || typeof question !== "string") {
     return res.status(400).json({ error: "question is required" });
   }
 
   try {
-    const result = await answerQuestion(question, pack_id || "a3_polaris", zone);
+    const result = await answerQuestion(
+      question,
+      pack_id || "a3_polaris",
+      zone         || null,
+      previous_zone || null,
+      next_zone    || null
+    );
     logAiRequest("qa", pack_id, question, result); // fire-and-forget
     return res.json(result);
   } catch (err) {

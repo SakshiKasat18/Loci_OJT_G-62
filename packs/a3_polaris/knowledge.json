@@ -1,166 +1,163 @@
 {
   "packId": "a3_polaris",
   "floor": "ground",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "entries": [
     {
-      "id": "k_reception",
-      "topic": "Reception",
-      "aliases": [
-        "entry",
-        "entrance",
-        "lobby",
-        "front desk",
-        "reception area"
-      ],
-      "zone_id": "reception",
-      "content": "The reception is inspired by the Polaris star — the North Star that never moves while everything else rotates around it. Look up at the ceiling and you will see large circular light installations inspired by long-exposure photographs of the night sky, where the stars appear to trace infinite circles around a single fixed point. That fixed point is Polaris. This campus is designed to be exactly that — your constant reference point as you navigate your career in technology.",
-      "short": "You are at the reception — inspired by the Polaris star, your fixed point for navigation.",
-      "experience_script": "Welcome to Polaris School of Technology. The circular lights above you are inspired by long-exposure photographs of the night sky — where every star traces a circle around one fixed point: Polaris, the North Star. This campus is designed to be that for you — a constant, reliable guide as you build your future in technology."
+      "id": "k_campus",
+      "zone_id": "polaris_campus",
+      "label": "Polaris School of Technology",
+      "identity": "Polaris is named after the North Star — a fixed point in the sky used historically as a navigation reference because it barely appears to move while everything else rotates around it.",
+      "purpose": "To create a campus environment built around focused work, mentorship, and direct skill-building in technology.",
+      "atmosphere": "Ambitious but grounded. Structured around building, contribution, and collaboration rather than passive instruction.",
+      "symbolism": "The North Star was used by navigators as a fixed reference point. The campus name reflects that principle — a reliable, consistent environment while the technology landscape around it changes.",
+      "experience_script": null,
+      "next_zone": null,
+      "keywords": ["polaris", "north star", "campus", "name", "philosophy", "overall", "why called"]
     },
     {
-      "id": "k_merchandise",
-      "topic": "Merchandise Display",
-      "aliases": [
-        "merch",
-        "display",
-        "showcase",
-        "cabinet",
-        "merchandise area"
-      ],
-      "zone_id": "merchandise_display",
-      "content": "The merchandise display in the lobby is a living archive of the campus journey. Each item — a t-shirt from a Google hackathon, a bottle from a Microsoft mixer, a magazine from a key event — represents a real moment in time. This is not a trophy cabinet. It is a collection of memories, partnerships, and milestones, gradually building a legacy that future students will look back at to understand the culture they are stepping into.",
-      "short": "The merchandise display tells the story of Polaris through objects — each item is a real campus memory.",
-      "experience_script": "Each item in this display represents a moment in Polaris history — a hackathon won, a company visited, a speaker who changed how students think. Over time, this becomes a living archive of everything this campus has built and everyone who has been part of the journey."
+      "id": "k_entrance",
+      "zone_id": "entrance",
+      "label": "Entrance",
+      "identity": "The entrance is a deliberate threshold — a moment of transition between the outside world and the Polaris environment.",
+      "purpose": "To create a conscious shift before the experience begins. The simplicity here lets what follows make a stronger impression.",
+      "atmosphere": "Clean, quiet, and anticipatory. The restraint is intentional.",
+      "symbolism": "Every meaningful journey has a clear point of beginning. The entrance makes that beginning tangible and felt.",
+      "experience_script": "You're at the entrance.",
+      "next_zone": "reception",
+      "keywords": ["entrance", "entry", "start", "beginning", "arrive", "threshold"]
+    },
+    {
+      "id": "k_reception",
+      "zone_id": "reception",
+      "label": "Reception",
+      "identity": "The reception area features a circular ceiling installation based on long-exposure star trail photography, where every star traces a perfect circle around one fixed point — Polaris, the North Star.",
+      "purpose": "To create the first spatial impression of the campus. The ceiling installation immediately establishes the connection between the campus name and the astronomical reference it is built on.",
+      "atmosphere": "Open, considered, and distinctive. The circular installation draws the eye upward and creates a calm sense of arrival.",
+      "symbolism": "The circular installation references long-exposure star trail images directly — the sky rotating around one still point. The campus name comes from that fixed point.",
+      "experience_script": "That circular installation above you is inspired by long-exposure photographs of the night sky — where every star traces a perfect orbit around one fixed point: Polaris, the North Star. The campus takes its name from it. The idea of something that stays constant while everything else moves.",
+      "next_zone": "radial_classroom",
+      "keywords": ["reception", "lobby", "ceiling", "circular lights", "polaris star", "north star", "why called", "installation"]
     },
     {
       "id": "k_radial_classroom",
-      "topic": "Radial Classroom",
-      "aliases": [
-        "seminar room",
-        "lecture hall",
-        "circular classroom",
-        "radial room",
-        "semi circular"
-      ],
       "zone_id": "radial_classroom",
-      "content": "The Radial Classroom is a semi-circular learning space inspired by the great lecture halls of top global universities. Every seat has a direct, unobstructed view of the speaker and all screens — the design removes hierarchy between audience and presenter. This room is reserved for high-impact sessions: fireside chats, guest lectures, talks by founders and industry leaders. The acoustics and display systems are built to international standard so that both students and visiting speakers have a seamless, world-class experience.",
-      "short": "The Radial Classroom is a semi-circular lecture space built for fireside chats and high-impact talks.",
-      "experience_script": "This is the Radial Classroom. The semi-circular layout means every student has an equal, unobstructed view — no bad seats. This room hosts fireside chats, founder talks, and guest lectures. The acoustics are designed so that every word lands clearly, whether you are in the front row or the last."
+      "label": "Radial Classroom",
+      "identity": "A semi-circular learning space inspired by the great lecture halls of top global universities. Every seat has an identical, unobstructed view of the speaker and all screens.",
+      "purpose": "Designed for high-impact sessions — fireside chats, guest lectures, talks by founders and industry leaders. Not for regular instruction.",
+      "atmosphere": "Immersive, professional, and egalitarian. The shape removes hierarchy — there is no front row or back row, no privileged seat.",
+      "symbolism": "The semi-circular form is a statement: every voice in this room carries the same weight. The architecture itself enforces equality of attention and presence.",
+      "experience_script": "Notice the shape of this room. Every seat has exactly the same view. There is no front row or back row. It is designed for talks that matter — founders, speakers, panels, fireside conversations. Wherever you are sitting, the room works equally well for you.",
+      "next_zone": "admin_block",
+      "keywords": ["radial classroom", "circular room", "semicircle", "lecture hall", "why circular", "fireside", "talks", "shape", "design"]
     },
     {
-      "id": "k_creator_studio",
-      "topic": "Creator Studio",
-      "aliases": [
-        "studio",
-        "recording studio",
-        "content studio",
-        "podcast room"
-      ],
-      "zone_id": "creator_studio",
-      "content": "The Creator Studio is a professional-grade recording space built specifically for students. It has high-quality audio and video recording equipment, acoustic treatment for clean sound, a proper recording environment, and a prep area. The idea is to remove all friction between a student and their content. Whether you want to build a personal brand, teach what you know, document your journey, or create in any format — the tools and space are here, no booking required during open hours.",
-      "short": "The Creator Studio is a professional recording space built so students have zero friction to create content.",
-      "experience_script": "You have just entered the Creator Studio. This is a fully equipped recording space — acoustically treated, professionally lit, with high-quality audio and video gear — built entirely for students. The philosophy here is simple: if you want to build in public and share your thinking with the world, this campus will not let tools or space be the reason you do not."
-    },
-    {
-      "id": "k_creator_lounge",
-      "topic": "Creator Lounge",
-      "aliases": [
-        "lounge",
-        "content lounge",
-        "creator space"
-      ],
-      "zone_id": "creator_lounge",
-      "content": "Just outside the Creator Studio is the Creator Lounge — a relaxed, informal space for brainstorming, script writing, collaboration, and preparation before recording sessions. Students can hang out here, refine ideas, and mentally prepare before stepping into the studio. The lounge and studio together form a dedicated creative ecosystem on campus.",
-      "short": "The Creator Lounge is the informal space outside the studio for brainstorming and prep.",
-      "experience_script": "This is the Creator Lounge — the thinking space before the making space. Students come here to brainstorm ideas, write scripts, and collaborate before stepping into the studio next door."
-    },
-    {
-      "id": "k_mentor_room",
-      "topic": "Mentor Room",
-      "aliases": [
-        "faculty room",
-        "staff room",
-        "mentor space",
-        "teacher room"
-      ],
-      "zone_id": "mentor_room",
-      "content": "The Mentor Room is a quiet, access-controlled space reserved for faculty and mentors. It is designed to give mentors space to prepare, reflect, and reset between sessions. Great teaching requires calm and preparation — by keeping this zone separate from student-heavy areas, the campus ensures mentors can show up fully present for every session.",
-      "short": "The Mentor Room is a private preparation space reserved for faculty. It is access controlled.",
-      "experience_script": "This is the Mentor Room — a private, quiet space reserved for faculty to prepare and reset. It is intentionally separated from the rest of the floor so that mentors can show up fully present for every session."
-    },
-    {
-      "id": "k_arcade",
-      "topic": "Arcade",
-      "aliases": [
-        "games",
-        "gaming area",
-        "arcade area",
-        "game zone",
-        "air hockey"
-      ],
-      "zone_id": "gaming_arcade",
-      "content": "The Arcade is a deliberate design decision. After long hours of coding and focused academic work, students need a space to completely switch off. This area has modern arcade setups alongside nostalgic 90s-style games, air hockey, and basketball — neon-lit and intentionally different in energy from everything else on this floor. The goal is mental reset through play. High performance in technology is supported by spaces that let you step away from screens, move your body, and reconnect with others informally.",
-      "short": "The Arcade is a neon-lit game zone designed for mental reset after intense academic sessions.",
-      "experience_script": "Welcome to the Arcade. This space exists for one reason: after hours of deep work and problem-solving, your brain needs to completely switch gears. Neon lights, classic arcade games, air hockey, basketball. No screens, no code — just play. This is not wasted time. This is how high performers recharge."
+      "id": "k_admin_block",
+      "zone_id": "admin_block",
+      "label": "Guidance and Mentor Area",
+      "identity": "This section of campus brings together mentor rooms, faculty spaces, student support zones, and nearby achievement displays — a region where guidance and momentum coexist.",
+      "purpose": "To make mentorship visible and connected to real outcomes. Students interact with mentors here, and nearby in this area, displays reflect the kind of work Polaris students have gone on to do — in programs like GSOC, LFX, SOB, and C4GT.",
+      "atmosphere": "Quietly inspiring and grounded. Not a showcase — more like a reminder of what focused effort and good mentorship can build over time.",
+      "symbolism": "The proximity of mentorship spaces to achievement displays is intentional. It makes the connection between guidance and outcome something students encounter naturally, without it needing to be explained.",
+      "experience_script": null,
+      "next_zone": "cafeteria",
+      "keywords": ["admin", "mentor", "faculty", "achievements", "gsoc", "lfx", "sob", "c4gt", "guidance", "support", "student achievements", "display"]
     },
     {
       "id": "k_cafeteria",
-      "topic": "Cafeteria",
-      "aliases": [
-        "cafe",
-        "food",
-        "canteen",
-        "kitchen",
-        "dining",
-        "eat"
-      ],
       "zone_id": "cafeteria",
-      "content": "The cafeteria is designed to feel like a cozy café, not a college canteen. Warm yellow lighting is used intentionally — it calms the nervous system and creates a sense of comfort. The goal is for students to slow down, actually enjoy their meals, and feel at home. This is a comfort space designed to recharge students emotionally, not just physically.",
-      "short": "The cafeteria is designed like a warm café — intentional yellow lighting to help you slow down and recharge.",
-      "experience_script": "This is the cafeteria. Notice the warm yellow lighting — it is intentional. Yellow light calms the nervous system. This space is designed to feel like a café, not a canteen, because the goal is for you to actually slow down, eat well, and feel at home. In a high-intensity learning environment, this kind of space matters."
+      "label": "Cafeteria",
+      "identity": "The cafeteria is designed to feel like a cozy café, not a college canteen. Warm yellow lighting, comfortable pacing, and a sense of genuine ease.",
+      "purpose": "A comfort space. The goal is for students to actually slow down — to eat without rushing, sit without purpose, and recharge emotionally.",
+      "atmosphere": "Warm, calm, and homely. Yellow light is used intentionally — it calms the nervous system and creates a sense of familiarity close to being at home.",
+      "symbolism": "High performance in any field requires genuine rest. This space exists to honour that. The design communicates quietly: you are allowed to stop here.",
+      "experience_script": "Yellow light. Warm tables. This space was designed to slow you down. It is not a canteen. The goal is for you to actually eat, sit for a while, and come back ready.",
+      "next_zone": "gaming_arcade",
+      "keywords": ["cafeteria", "food", "cafe", "yellow light", "lighting", "warm", "relax", "eat", "rest", "canteen"]
     },
     {
-      "id": "k_wormhole",
-      "topic": "Innovation Lab",
-      "aliases": [
-        "wormhole",
-        "innovation lab",
-        "lab",
-        "build space",
-        "maker space"
-      ],
+      "id": "k_gaming_arcade",
+      "zone_id": "gaming_arcade",
+      "label": "Gaming Arcade",
+      "identity": "A neon-lit unwinding zone featuring modern arcade setups, classic nostalgia-inspired games, air hockey, and basketball — deliberately different in energy from every other space on this floor.",
+      "purpose": "Mental reset through play. After long hours of focused building and problem-solving, students need a space to completely switch off and reconnect informally.",
+      "atmosphere": "High-energy, social, and playful. The neon lighting and open layout signal immediately that this is not an academic or productive space.",
+      "symbolism": "The best builders understand when to step away from the screen. Play is not distraction — it is part of how sustained high performance actually works.",
+      "experience_script": "This is the gaming arcade. Professional setups, fast internet, and the best place to blow off steam after a long building session. The best builders also know when to hit pause.",
+      "next_zone": "innovation_lab",
+      "keywords": ["arcade", "games", "gaming", "play", "neon", "air hockey", "basketball", "relax", "unwind", "fun", "mental reset"]
+    },
+    {
+      "id": "k_innovation_lab",
       "zone_id": "innovation_lab",
-      "content": "The Innovation Lab is called the Wormhole — inspired by Einstein's theory of relativity and the concept of a tunnel through space-time that accelerates movement between two points. As you walk through the entrance tunnel, the light and spatial design are meant to create a mental shift: you are leaving the regular world and entering a space dedicated entirely to building, experimentation, and accelerated learning. The wormhole, famously visualised in the film Interstellar as a three-dimensional sphere, became the conceptual model for this transition experience.",
-      "short": "The Wormhole is the Innovation Lab — walking in is designed to feel like a mental shift into building mode.",
-      "experience_script": "You are about to enter the Wormhole — Polaris's Innovation Lab. The entrance tunnel is intentional. In physics, a wormhole is a shortcut through space-time — a passage that accelerates you from one point to another faster than normal. Here, the metaphor is real. Walking through this tunnel is meant to trigger a mental shift: you are leaving passive learning behind and entering a space designed entirely for active building, experimentation, and discovery."
+      "label": "Innovation Lab",
+      "identity": "The Innovation Lab is called the Wormhole — inspired by Einstein's theory of relativity and the concept of a tunnel through space-time that accelerates movement between two distant points.",
+      "purpose": "A space dedicated entirely to active building, experimentation, and accelerated learning. Hardware prototyping, software experimentation, and discovery happen here.",
+      "atmosphere": "Focused, immersive, and shift-inducing. The entrance tunnel uses light and spatial design to create a deliberate sense of transition — from passive learning to active building.",
+      "symbolism": "A wormhole is a shortcut through space-time. Walking through this tunnel is meant to trigger a real mental shift: you are leaving the regular world behind and entering a space where time moves differently.",
+      "experience_script": "You have reached the Innovation Lab — the Wormhole. The entrance tunnel is intentional. In physics, a wormhole is a shortcut through space-time — a passage that accelerates you from one point to another. Here, the metaphor is real. Walking through this tunnel is meant to trigger a shift: you are leaving passive learning behind and entering a space designed for active building, experimentation, and discovery.",
+      "next_zone": null,
+      "keywords": ["innovation lab", "wormhole", "lab", "tunnel", "build", "hardware", "prototyping", "einstein", "interstellar", "space time", "maker space"]
     },
     {
-      "id": "k_utility",
-      "topic": "Utility Area",
-      "aliases": [
-        "utility",
-        "storage",
-        "service area"
-      ],
-      "zone_id": "utility",
-      "content": "The utility and service area supports the day-to-day operations of the ground floor, including the kitchen and back-of-house functions for the cafeteria.",
-      "short": "The utility area is the service and storage zone supporting the cafeteria and ground floor operations.",
-      "experience_script": null
+      "id": "k_creator_studio",
+      "zone_id": "creator_studio",
+      "label": "Creator Studio",
+      "identity": "A professional-grade recording space built specifically for students — acoustically treated, professionally lit, with high-quality audio and video equipment.",
+      "purpose": "To remove all friction between a student and the act of creation — whether teaching, brand building, podcasting, or experimenting with new formats.",
+      "atmosphere": "Purposeful and focused. Designed to feel like a real production studio, not a repurposed classroom.",
+      "symbolism": "Distribution is the complement to technical depth. This space exists because building something is not enough if no one can see it. Communication is part of modern engineering culture.",
+      "experience_script": "This is a fully equipped recording space — acoustically treated, professionally lit, built entirely for students. The philosophy is simple: if you want to build in public and share your thinking with the world, this campus will not let tools or space be the reason you do not.",
+      "next_zone": null,
+      "keywords": ["creator studio", "studio", "recording", "podcast", "content", "video", "audio", "brand", "creator", "production"]
     },
     {
-      "id": "k_corridor",
-      "topic": "Corridor",
-      "aliases": [
-        "hallway",
-        "passage",
-        "walkway",
-        "corridor"
-      ],
-      "zone_id": "corridor_main",
-      "content": "The main corridor on the ground floor connects all zones and leads to the staircase and lift access points.",
-      "short": "The main corridor connects all ground floor zones.",
-      "experience_script": null
+      "id": "k_creator_lounge",
+      "zone_id": "creator_lounge",
+      "label": "Creator Lounge",
+      "identity": "An informal collaboration space adjacent to the Creator Studio — a place to brainstorm, write scripts, and prepare before stepping in front of a camera or microphone.",
+      "purpose": "The thinking space before the making space. Students gather here to refine ideas and collaborate without the pressure of a production environment.",
+      "atmosphere": "Relaxed and generative. Deliberately informal to encourage ideas to surface without friction or expectation.",
+      "symbolism": "Good creation rarely starts cold. The lounge exists to honour the process that happens before a single frame is recorded.",
+      "experience_script": "This is the thinking space before the making space. Students come here to brainstorm ideas, write scripts, and collaborate before stepping into the studio next door.",
+      "next_zone": null,
+      "keywords": ["creator lounge", "lounge", "brainstorm", "script", "collaborate", "prep", "informal", "creator space"]
+    },
+    {
+      "id": "k_mentor_room",
+      "zone_id": "mentor_room",
+      "label": "Mentor Room",
+      "identity": "A quiet, access-controlled space reserved exclusively for faculty and mentors — designed as a respectful, distraction-free preparation environment.",
+      "purpose": "To give mentors the space and calm they need to prepare before stepping into classrooms. Great teaching requires genuine preparation.",
+      "atmosphere": "Private, still, and intentional. Separated from student-heavy areas to protect the quality of presence mentors bring to every session.",
+      "symbolism": "By creating a space that belongs entirely to mentors, the campus signals that teaching is worthy of architecture — not just a role, but a sustained practice.",
+      "experience_script": "This is a private, quiet space reserved for faculty to prepare and reset. It is intentionally separated from the rest of the floor so that mentors can show up fully present for every session.",
+      "next_zone": null,
+      "keywords": ["mentor room", "faculty room", "staff room", "teacher room", "private", "preparation", "faculty", "mentor"]
+    },
+    {
+      "id": "k_soul_studio",
+      "zone_id": "soul_studio",
+      "label": "Soul Studio",
+      "identity": "A large, open hall on the upper floor — one full wall of glass, green-toned walls inspired by wellness retreats, overlooking a nearby lake. A sanctuary for art, culture, and extracurricular expression.",
+      "purpose": "To give students a dedicated space to express themselves beyond academics and technology — dance, music, debate, meditation, art. Technical growth and emotional well-being are not separate pursuits here.",
+      "atmosphere": "Calm, open, and emotionally expansive. The green palette and natural light are intentional — designed to induce clarity and creative openness.",
+      "symbolism": "A technologist who cannot express themselves is incomplete. This space is a philosophical statement: culture and creativity are not extracurricular — they are essential.",
+      "experience_script": null,
+      "next_zone": null,
+      "keywords": ["soul studio", "dance", "music", "art", "meditation", "yoga", "debate", "expression", "creativity", "second floor", "green room", "lake view", "wellness"]
+    },
+    {
+      "id": "k_first_floor",
+      "zone_id": "first_floor",
+      "label": "First Floor",
+      "identity": "The first floor is dedicated to mentor-led structured learning — quieter, more controlled, and deliberately different from the energy of the ground floor.",
+      "purpose": "Deep focus, consistency, and close mentor-student interaction. Large classrooms for core instruction, smaller cohort rooms for focused group learning.",
+      "atmosphere": "Disciplined, grounded, and professional. Long linear walkways and structured layouts mirror the focused mindset the floor is designed to cultivate.",
+      "symbolism": "The separation of floors is intentional. Exploration and play below; structured execution above. Students physically move between these two modes as part of their daily rhythm.",
+      "experience_script": null,
+      "next_zone": null,
+      "keywords": ["first floor", "classrooms", "learning", "mentor led", "structured", "cohort", "focused", "upper floor", "academic", "quiet"]
     }
   ]
 }
