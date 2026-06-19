@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 function getApiBaseUrl(): string {
   // NOTE: Update this URL before APK build if using ngrok.
   // Ngrok URLs change on restart. Use a stable backend for production.
-  return "https://natantly-oaten-emerald.ngrok-free.dev";
+  return "https://lociojtg-62-production.up.railway.app";
 }
 
 export const API_BASE_URL = getApiBaseUrl();
